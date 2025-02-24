@@ -176,7 +176,7 @@ def run_localization(
     while is_running:
         img = camera.read_image()
 
-        localization.update(img)
+        img = localization.update(img)
 
         pg.surfarray.blit_array(surface, img.transpose(1, 0, 2))
         pg.display.flip()

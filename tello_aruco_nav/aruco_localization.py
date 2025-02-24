@@ -4,6 +4,7 @@ from cv2 import aruco
 from cv2.typing import MatLike
 
 from tello_aruco_nav.settings import ArucoCenter, MapData
+from tello_aruco_nav.utils import euler_from_matrix
 
 
 class ArucoResult:
@@ -34,11 +35,13 @@ class ArucoLocalization:
         parameters = aruco.DetectorParameters()
         self.__detector = aruco.ArucoDetector(dictionary, parameters)
 
-    def update(self, image: MatLike):
-        corners, ids, rejected_corners = self.__detector.detectMarkers(image)
+    def update(self, img: MatLike):
+        img_copy = img.copy()
+
+        corners, ids, rejected_corners = self.__detector.detectMarkers(img)
         corners, ids, rejected_corners, recovered_ids = (
             self.__detector.refineDetectedMarkers(
-                image,
+                img,
                 self.__board,
                 corners,
                 ids,
@@ -47,10 +50,10 @@ class ArucoLocalization:
                 self.__cam_dist,
             )
         )
-        aruco.drawDetectedMarkers(image, corners, ids)
+        aruco.drawDetectedMarkers(img_copy, corners, ids)
 
         if ids is None or len(ids) == 0:
-            return
+            return img_copy
 
         object_points, image_points = self.__board.matchImagePoints(corners, ids)
         result, rvec, tvec = cv2.solvePnP(
@@ -60,4 +63,30 @@ class ArucoLocalization:
             self.__cam_dist,
         )
 
-        cv2.drawFrameAxes(image, self.__cam_mtx, self.__cam_dist, rvec, tvec, 1.0)
+        rotation, _ = cv2.Rodrigues(rvec)
+        position = -(rotation.T @ tvec)
+
+        pos_x, pos_y, pos_z = position[0, 0], position[1, 0], position[2, 0]
+        pitch, yaw, roll = euler_from_matrix(rotation)
+
+        cv2.drawFrameAxes(img_copy, self.__cam_mtx, self.__cam_dist, rvec, tvec, 1.0)
+        cv2.putText(
+            img_copy,
+            f"pos = {pos_x:.2f}, {pos_y:.2f}, {pos_z:.2f}",
+            (20, 20),
+            cv2.FONT_HERSHEY_PLAIN,
+            1.0,
+            (255, 255, 255),
+            1,
+        )
+        cv2.putText(
+            img_copy,
+            f"angles = {pitch:.2f}, {yaw:.2f}, {roll:.2f}",
+            (20, 40),
+            cv2.FONT_HERSHEY_PLAIN,
+            1.0,
+            (255, 255, 255),
+            1,
+        )
+
+        return img_copy
