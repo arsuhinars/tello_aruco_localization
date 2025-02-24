@@ -118,7 +118,9 @@ def calibrate_camera(offline: bool = False, offline_camera_index: int = 0):
     )
 
     console.print("ret\n", ret, sep="")
+    np.set_printoptions(precision=4)
     console.print("matrix\n", camera_matrix, sep="")
+    np.set_printoptions(precision=4)
     console.print("dist_coeffs\n", camera_dist_coeffs, sep="")
 
     camera.release()
@@ -150,7 +152,12 @@ def run_localization(
 
     with open(map_file) as f:
         map_data = MapData.model_validate_json(f.read())
-    localization = ArucoLocalization(settings.aruco_dictionary, map_data)
+    localization = ArucoLocalization(
+        settings.aruco_dictionary,
+        map_data,
+        settings.convert_camera_matrix(),
+        settings.convert_camera_dist_coeffs(),
+    )
 
     pg.display.init()
     surface = pg.display.set_mode((640, 480))

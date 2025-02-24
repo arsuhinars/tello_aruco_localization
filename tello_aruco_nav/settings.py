@@ -5,7 +5,7 @@ import numpy as np
 from cv2 import aruco
 from pydantic import BaseModel
 from pydantic.dataclasses import dataclass
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, JsonConfigSettingsSource, SettingsConfigDict
 
 from tello_aruco_nav.utils import (
     rotation_matrix_x,
@@ -20,10 +20,27 @@ Float3: TypeAlias = tuple[float, float, float]
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(json_file="settings.json")
 
-    camera_matrix: list[float] | None = None
+    camera_matrix: list[list[float]] | None = None
     camera_dist_coeffs: list[float] | None = None
 
     aruco_dictionary: int = aruco.DICT_6X6_250
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        return (JsonConfigSettingsSource(settings_cls),)
+
+    def convert_camera_matrix(self):
+        return np.array(self.camera_matrix)
+
+    def convert_camera_dist_coeffs(self):
+        return np.array(self.camera_dist_coeffs).reshape(-1, 1)
 
 
 @dataclass
@@ -33,7 +50,7 @@ class ArucoCenter:
     rotation: Float3
     size: float
 
-    def get_object_points(self) -> list[np.ndarray]:
+    def get_object_points(self) -> np.ndarray:
         m = (
             translation_matrix(*self.center)
             @ rotation_matrix_y(self.rotation[1])
@@ -52,7 +69,7 @@ class ArucoCenter:
         )
         np.dot(points, m.T, points)
 
-        return np.split(points[:, :, :-1], points.shape[0], axis=0)
+        return points[:, :-1]
 
 
 @dataclass

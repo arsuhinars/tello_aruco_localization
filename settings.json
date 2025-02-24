@@ -1,4 +1,10 @@
 {
-    "camera_matrix": null,
-    "camera_dist_coeffs": null
+    "camera_matrix": [
+        [725.2613, 0.0, 316.496],
+        [0.0, 694.0934, 152.0136],
+        [0.0, 0.0, 1.0]
+    ],
+    "camera_dist_coeffs": [
+        -0.232, 0.3475, 0.0272, -0.0016, -0.8782
+    ]
 }

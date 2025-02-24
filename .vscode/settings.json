@@ -5,10 +5,12 @@
     "dearpygui",
     "djitellopy",
     "imwrite",
+    "rvec",
     "signum",
     "streamoff",
     "streamon",
     "surfarray",
-    "tello"
+    "tello",
+    "tvec"
   ]
 }
