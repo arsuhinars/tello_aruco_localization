@@ -37,10 +37,10 @@ class AppSettings(BaseSettings):
         return (JsonConfigSettingsSource(settings_cls),)
 
     def convert_camera_matrix(self):
-        return np.array(self.camera_matrix)
+        return np.array(self.camera_matrix, np.float32)
 
     def convert_camera_dist_coeffs(self):
-        return np.array(self.camera_dist_coeffs).reshape(-1, 1)
+        return np.array(self.camera_dist_coeffs, np.float32).reshape(-1, 1)
 
 
 @dataclass
@@ -53,9 +53,9 @@ class ArucoCenter:
     def get_object_points(self) -> np.ndarray:
         m = (
             translation_matrix(*self.center)
-            @ rotation_matrix_y(self.rotation[1])
-            @ rotation_matrix_x(self.rotation[0])
-            @ rotation_matrix_z(self.rotation[2])
+            @ rotation_matrix_y(np.deg2rad(self.rotation[1]))
+            @ rotation_matrix_x(np.deg2rad(self.rotation[0]))
+            @ rotation_matrix_z(np.deg2rad(self.rotation[2]))
         )
 
         points = np.array(
