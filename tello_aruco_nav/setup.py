@@ -12,9 +12,10 @@ from djitellopy import Tello
 from tello_aruco_nav.aruco_localization import ArucoLocalization
 from tello_aruco_nav.camera import BaseCamera, CvCamera, TelloCamera
 from tello_aruco_nav.settings import AppSettings, MapData
-from tello_aruco_nav.utils import console
+from tello_aruco_nav.utils import console, euler_from_matrix
 
 CHESSBOARD_SIZE = (9, 6)
+WHITE_COLOR = (255, 255, 255)
 
 app = typer.Typer()
 
@@ -140,6 +141,10 @@ def run_localization(
 ):
     settings = AppSettings()
 
+    assert settings.camera_matrix is not None, "Camera must be calibrated"
+    assert settings.camera_dist_coeffs is not None, "Camera must be calibrated"
+    assert settings.camera_angles is not None, "Camera must be calibrated"
+
     camera: BaseCamera
     if offline:
         tello = None
@@ -152,11 +157,12 @@ def run_localization(
 
     with open(map_file) as f:
         map_data = MapData.model_validate_json(f.read())
-    localization = ArucoLocalization(
+    aruco_localization = ArucoLocalization(
         settings.aruco_dictionary,
         map_data,
         settings.convert_camera_matrix(),
         settings.convert_camera_dist_coeffs(),
+        settings.camera_angles,
     )
 
     pg.display.init()
@@ -176,9 +182,38 @@ def run_localization(
     while is_running:
         img = camera.read_image()
 
-        localization.update(img)
+        gray, pos, rot = aruco_localization.update(img)
 
-        pg.surfarray.blit_array(surface, img.transpose(1, 0, 2))
+        if pos is not None and rot is not None:
+            cv2.putText(
+                img,
+                f"pos = {pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}",
+                (20, 20),
+                cv2.FONT_HERSHEY_PLAIN,
+                1.0,
+                WHITE_COLOR,
+                1,
+            )
+            # pitch yaw roll
+            rot = euler_from_matrix(rot)
+            cv2.putText(
+                img,
+                f"angles = {rot[0]:.2f}, {rot[1]:.2f}, {rot[2]:.2f}",
+                (20, 40),
+                cv2.FONT_HERSHEY_PLAIN,
+                1.0,
+                WHITE_COLOR,
+                1,
+            )
+
+        window_width, window_height = pg.display.get_window_size()
+        if img is not None and (
+            img.shape[1] != window_width or img.shape[0] != window_height
+        ):
+            pg.display.set_mode((img.shape[1], img.shape[0]))
+
+        if img is not None and img.size != 0:
+            pg.surfarray.blit_array(surface, img.transpose(1, 0, 2))
         pg.display.flip()
 
         for event in pg.event.get():
@@ -197,4 +232,89 @@ def run_localization(
 
 
 @app.command()
-def run_mission(map_file: str, mission_file: str): ...
+def run_mission(map_file: str, mission_file: str):
+    settings = AppSettings()
+
+    assert settings.camera_matrix is not None, "Camera must be calibrated"
+    assert settings.camera_dist_coeffs is not None, "Camera must be calibrated"
+    assert settings.camera_angles is not None, "Camera must be calibrated"
+
+    tello = Tello()
+    tello.connect()
+    tello.streamon()
+    camera = TelloCamera(tello)
+
+    with open(map_file) as f:
+        map_data = MapData.model_validate_json(f.read())
+    aruco_localization = ArucoLocalization(
+        settings.aruco_dictionary,
+        map_data,
+        settings.convert_camera_matrix(),
+        settings.convert_camera_dist_coeffs(),
+        settings.camera_angles,
+    )
+
+    pg.display.init()
+    surface = pg.display.set_mode((640, 480))
+    is_running = True
+
+    def stop(signum, frame):
+        nonlocal is_running
+        is_running = False
+        console.log("Stopping app")
+
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
+
+    console.log("App is running")
+
+    while is_running:
+        img = camera.read_image()
+
+        gray, pos, rot = aruco_localization.update(img)
+
+        if pos is not None and rot is not None:
+            cv2.putText(
+                img,
+                f"pos = {pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}",
+                (20, 20),
+                cv2.FONT_HERSHEY_PLAIN,
+                1.0,
+                WHITE_COLOR,
+                1,
+            )
+            # pitch yaw roll
+            rot = euler_from_matrix(rot)
+            cv2.putText(
+                img,
+                f"angles = {rot[0]:.2f}, {rot[1]:.2f}, {rot[2]:.2f}",
+                (20, 40),
+                cv2.FONT_HERSHEY_PLAIN,
+                1.0,
+                WHITE_COLOR,
+                1,
+            )
+
+        window_width, window_height = pg.display.get_window_size()
+        if img is not None and (
+            img.shape[1] != window_width or img.shape[0] != window_height
+        ):
+            pg.display.set_mode((img.shape[1], img.shape[0]))
+
+        if img is not None and img.size != 0:
+            pg.surfarray.blit_array(surface, img.transpose(1, 0, 2))
+        pg.display.flip()
+
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                is_running = False
+
+    camera.release()
+
+    if tello is not None:
+        tello.streamoff()
+        tello.end()
+
+    pg.quit()
+
+    console.log("App was stopped")

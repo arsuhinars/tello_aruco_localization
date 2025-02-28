@@ -1,5 +1,4 @@
 import itertools
-from typing import TypeAlias
 
 import numpy as np
 from cv2 import aruco
@@ -8,13 +7,12 @@ from pydantic.dataclasses import dataclass
 from pydantic_settings import BaseSettings, JsonConfigSettingsSource, SettingsConfigDict
 
 from tello_aruco_nav.utils import (
+    Float3,
     rotation_matrix_x,
     rotation_matrix_y,
     rotation_matrix_z,
     translation_matrix,
 )
-
-Float3: TypeAlias = tuple[float, float, float]
 
 
 class AppSettings(BaseSettings):
@@ -22,8 +20,9 @@ class AppSettings(BaseSettings):
 
     camera_matrix: list[list[float]] | None = None
     camera_dist_coeffs: list[float] | None = None
+    camera_angles: Float3 | None = None
 
-    aruco_dictionary: int = aruco.DICT_6X6_250
+    aruco_dictionary: int = aruco.DICT_4X4_250
 
     @classmethod
     def settings_customise_sources(
@@ -60,10 +59,10 @@ class ArucoCenter:
 
         points = np.array(
             [
-                [self.size, self.size, 0.0, 1.0],
-                [-self.size, self.size, 0.0, 1.0],
-                [-self.size, -self.size, 0.0, 1.0],
-                [self.size, -self.size, 0.0, 1.0],
+                [-self.size, 0.0, self.size, 1.0],
+                [self.size, 0.0, self.size, 1.0],
+                [self.size, 0.0, -self.size, 1.0],
+                [-self.size, 0.0, -self.size, 1.0],
             ],
             np.float32,
         )
@@ -110,3 +109,14 @@ class MapData(BaseModel):
                         )
 
         return result
+
+
+class MissionWaypoint(BaseModel):
+    marker_id: int
+    altitude: float
+    radius: float = 0.3
+    delay_after: float = 0.0
+
+
+class MissionData(BaseModel):
+    waypoints: list[MissionWaypoint]

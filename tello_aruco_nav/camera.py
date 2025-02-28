@@ -40,7 +40,7 @@ class CvCamera(BaseCamera):
 
 class TelloCamera(BaseCamera):
     def __init__(self, tello: Tello):
-        self.__frame_reader = tello.get_frame_read()
+        self.__frame_reader = tello.get_frame_read(True)
 
     def read_image(self):
         return cast(np.ndarray, self.__frame_reader.frame)
