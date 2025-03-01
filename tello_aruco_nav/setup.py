@@ -11,7 +11,8 @@ from djitellopy import Tello
 
 from tello_aruco_nav.aruco_localization import ArucoLocalization
 from tello_aruco_nav.camera import BaseCamera, CvCamera, TelloCamera
-from tello_aruco_nav.settings import AppSettings, MapData
+from tello_aruco_nav.drone_controller import DroneController
+from tello_aruco_nav.settings import AppSettings, MapData, MissionData
 from tello_aruco_nav.utils import console, euler_from_matrix
 
 CHESSBOARD_SIZE = (9, 6)
@@ -137,7 +138,10 @@ def calibrate_camera(offline: bool = False, offline_camera_index: int = 0):
 
 @app.command()
 def run_localization(
-    map_file: str, offline: bool = False, offline_camera_index: int = 0
+    map_file: str,
+    mission_file: str | None = None,
+    offline: bool = False,
+    offline_camera_index: int = 0,
 ):
     settings = AppSettings()
 
@@ -157,13 +161,20 @@ def run_localization(
 
     with open(map_file) as f:
         map_data = MapData.model_validate_json(f.read())
+    markers = map_data.convert_aruco_list()
     aruco_localization = ArucoLocalization(
         settings.aruco_dictionary,
-        map_data,
+        markers,
         settings.convert_camera_matrix(),
         settings.convert_camera_dist_coeffs(),
         settings.camera_angles,
     )
+    if mission_file is not None and tello is not None:
+        with open(mission_file) as f:
+            mission_data = MissionData.model_validate_json(f.read())
+        controller = DroneController(tello, mission_data, markers)
+    else:
+        controller = None
 
     pg.display.init()
     surface = pg.display.set_mode((640, 480))
@@ -173,6 +184,8 @@ def run_localization(
         nonlocal is_running
         is_running = False
         console.log("Stopping app")
+        if tello is not None and tello.is_flying:
+            tello.emergency()
 
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
@@ -182,9 +195,9 @@ def run_localization(
     while is_running:
         img = camera.read_image()
 
-        gray, pos, rot = aruco_localization.update(img)
+        gray, pos, rot_mtx = aruco_localization.update(img)
 
-        if pos is not None and rot is not None:
+        if pos is not None and rot_mtx is not None:
             cv2.putText(
                 img,
                 f"pos = {pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}",
@@ -195,11 +208,35 @@ def run_localization(
                 1,
             )
             # pitch yaw roll
-            rot = euler_from_matrix(rot)
+            rot = euler_from_matrix(rot_mtx)
             cv2.putText(
                 img,
                 f"angles = {rot[0]:.2f}, {rot[1]:.2f}, {rot[2]:.2f}",
                 (20, 40),
+                cv2.FONT_HERSHEY_PLAIN,
+                1.0,
+                WHITE_COLOR,
+                1,
+            )
+        if tello is not None:
+            speed = (
+                tello.get_speed_x() / 100.0,
+                tello.get_speed_y() / 100.0,
+                tello.get_speed_z() / 100.0,
+            )
+            cv2.putText(
+                img,
+                f"speed = {speed[0]:.2f}, {speed[1]:.2f}, {speed[2]:.2f}",
+                (20, 60),
+                cv2.FONT_HERSHEY_PLAIN,
+                1.0,
+                WHITE_COLOR,
+                1,
+            )
+            cv2.putText(
+                img,
+                f"battery = {tello.get_battery()}%",
+                (20, 80),
                 cv2.FONT_HERSHEY_PLAIN,
                 1.0,
                 WHITE_COLOR,
@@ -216,94 +253,8 @@ def run_localization(
             pg.surfarray.blit_array(surface, img.transpose(1, 0, 2))
         pg.display.flip()
 
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                is_running = False
-
-    camera.release()
-
-    if tello is not None:
-        tello.streamoff()
-        tello.end()
-
-    pg.quit()
-
-    console.log("App was stopped")
-
-
-@app.command()
-def run_mission(map_file: str, mission_file: str):
-    settings = AppSettings()
-
-    assert settings.camera_matrix is not None, "Camera must be calibrated"
-    assert settings.camera_dist_coeffs is not None, "Camera must be calibrated"
-    assert settings.camera_angles is not None, "Camera must be calibrated"
-
-    tello = Tello()
-    tello.connect()
-    tello.streamon()
-    camera = TelloCamera(tello)
-
-    with open(map_file) as f:
-        map_data = MapData.model_validate_json(f.read())
-    aruco_localization = ArucoLocalization(
-        settings.aruco_dictionary,
-        map_data,
-        settings.convert_camera_matrix(),
-        settings.convert_camera_dist_coeffs(),
-        settings.camera_angles,
-    )
-
-    pg.display.init()
-    surface = pg.display.set_mode((640, 480))
-    is_running = True
-
-    def stop(signum, frame):
-        nonlocal is_running
-        is_running = False
-        console.log("Stopping app")
-
-    signal.signal(signal.SIGINT, stop)
-    signal.signal(signal.SIGTERM, stop)
-
-    console.log("App is running")
-
-    while is_running:
-        img = camera.read_image()
-
-        gray, pos, rot = aruco_localization.update(img)
-
-        if pos is not None and rot is not None:
-            cv2.putText(
-                img,
-                f"pos = {pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}",
-                (20, 20),
-                cv2.FONT_HERSHEY_PLAIN,
-                1.0,
-                WHITE_COLOR,
-                1,
-            )
-            # pitch yaw roll
-            rot = euler_from_matrix(rot)
-            cv2.putText(
-                img,
-                f"angles = {rot[0]:.2f}, {rot[1]:.2f}, {rot[2]:.2f}",
-                (20, 40),
-                cv2.FONT_HERSHEY_PLAIN,
-                1.0,
-                WHITE_COLOR,
-                1,
-            )
-
-        window_width, window_height = pg.display.get_window_size()
-        if img is not None and (
-            img.shape[1] != window_width or img.shape[0] != window_height
-        ):
-            pg.display.set_mode((img.shape[1], img.shape[0]))
-
-        if img is not None and img.size != 0:
-            pg.surfarray.blit_array(surface, img.transpose(1, 0, 2))
-        pg.display.flip()
+        if controller is not None:
+            controller.update(pos, rot_mtx)
 
         for event in pg.event.get():
             if event.type == pg.QUIT:

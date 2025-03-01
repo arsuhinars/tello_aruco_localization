@@ -3,7 +3,7 @@ import numpy as np
 from cv2 import aruco
 from cv2.typing import MatLike
 
-from tello_aruco_nav.settings import ArucoCenter, MapData
+from tello_aruco_nav.settings import ArucoCenter
 from tello_aruco_nav.utils import Float3, rotation_matrix_euler
 
 
@@ -19,7 +19,7 @@ class ArucoLocalization:
     def __init__(
         self,
         aruco_dict_id: int,
-        map_data: MapData,
+        markers: list[ArucoCenter],
         camera_matrix: np.ndarray,
         camera_dist_coeffs: np.ndarray,
         camera_angles: Float3,
@@ -31,7 +31,6 @@ class ArucoLocalization:
         ]
 
         dictionary = aruco.getPredefinedDictionary(aruco_dict_id)
-        markers = map_data.convert_aruco_list()
         markers_ids = np.fromiter(map(lambda m: m.id, markers), np.int32)
         object_points = list(map(ArucoCenter.get_object_points, markers))
         self.__board = aruco.Board(object_points, dictionary, markers_ids)
@@ -45,7 +44,7 @@ class ArucoLocalization:
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (3, 3), 0)
-        _, gray = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
+        # _, gray = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
 
         corners, ids, rejected_corners = self.__detector.detectMarkers(gray)
         corners, ids, rejected_corners, _ = self.__detector.refineDetectedMarkers(

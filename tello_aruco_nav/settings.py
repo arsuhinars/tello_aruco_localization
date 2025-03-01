@@ -57,12 +57,13 @@ class ArucoCenter:
             @ rotation_matrix_z(np.deg2rad(self.rotation[2]))
         )
 
+        half_size = self.size / 2.0
         points = np.array(
             [
-                [-self.size, 0.0, self.size, 1.0],
-                [self.size, 0.0, self.size, 1.0],
-                [self.size, 0.0, -self.size, 1.0],
-                [-self.size, 0.0, -self.size, 1.0],
+                [-half_size, 0.0, half_size, 1.0],
+                [half_size, 0.0, half_size, 1.0],
+                [half_size, 0.0, -half_size, 1.0],
+                [-half_size, 0.0, -half_size, 1.0],
             ],
             np.float32,
         )

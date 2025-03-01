@@ -1,0 +1,34 @@
+{
+    "waypoints": [
+        {
+            "marker_id": 41,
+            "altitude": 1.0,
+            "radius": 0.1,
+            "delay_after": 0.0
+        },
+        {
+            "marker_id": 20,
+            "altitude": 1.5,
+            "radius": 0.1,
+            "delay_after": 0.0
+        },
+        {
+            "marker_id": 17,
+            "altitude": 1.5,
+            "radius": 0.1,
+            "delay_after": 15.0
+        },
+        {
+            "marker_id": 38,
+            "altitude": 1.0,
+            "radius": 0.1,
+            "delay_after": 0.0
+        },
+        {
+            "marker_id": 41,
+            "altitude": 1.0,
+            "radius": 0.1,
+            "delay_after": 0.0
+        }
+    ]
+}
