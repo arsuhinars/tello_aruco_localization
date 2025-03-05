@@ -1,11 +1,17 @@
-from typing import TypeAlias
+from typing import Type, TypeAlias
 
 import numpy as np
+from pydantic import BaseModel
 from rich.console import Console
 
 console = Console()
 
 Float3: TypeAlias = tuple[float, float, float]
+
+
+def load_json[T: BaseModel](model: Type[T], file_path: str) -> T:
+    with open(file_path, mode="r") as f:
+        return model.model_validate_json(f.read())
 
 
 def translation_matrix(x: float, y: float, z: float):

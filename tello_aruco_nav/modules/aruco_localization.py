@@ -3,23 +3,16 @@ import numpy as np
 from cv2 import aruco
 from cv2.typing import MatLike
 
-from tello_aruco_nav.settings import ArucoCenter
-from tello_aruco_nav.utils import Float3, rotation_matrix_euler
+from tello_aruco_nav.common.utils import Float3, rotation_matrix_euler
+from tello_aruco_nav.schemas.map import MarkerData
 
-
-class ArucoResult:
-    position: np.ndarray
-    markers: list[np.ndarray]
-    corners: list[np.ndarray]
-    ids: np.ndarray
-    rejected_points: list[np.ndarray]
+ARUCO_DICTIONARY = aruco.DICT_4X4_250
 
 
 class ArucoLocalization:
     def __init__(
         self,
-        aruco_dict_id: int,
-        markers: list[ArucoCenter],
+        markers: list[MarkerData],
         camera_matrix: np.ndarray,
         camera_dist_coeffs: np.ndarray,
         camera_angles: Float3,
@@ -30,25 +23,27 @@ class ArucoLocalization:
             :3, :3
         ]
 
-        dictionary = aruco.getPredefinedDictionary(aruco_dict_id)
+        dictionary = aruco.getPredefinedDictionary(ARUCO_DICTIONARY)
         markers_ids = np.fromiter(map(lambda m: m.id, markers), np.int32)
-        object_points = list(map(ArucoCenter.get_object_points, markers))
+        object_points = list(map(MarkerData.get_object_points, markers))
         self.__board = aruco.Board(object_points, dictionary, markers_ids)
 
         parameters = aruco.DetectorParameters()
         self.__detector = aruco.ArucoDetector(dictionary, parameters)
 
+        self.__gray_img: np.ndarray | None = None
+
     def update(self, img: MatLike):
-        if img is None or img.size == 0:
+        if img is None:
             return None, None, None
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+        self.__gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY, self.__gray_img)
+        self.__gray_img = cv2.GaussianBlur(self.__gray_img, (3, 3), 0, self.__gray_img)
         # _, gray = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
 
-        corners, ids, rejected_corners = self.__detector.detectMarkers(gray)
+        corners, ids, rejected_corners = self.__detector.detectMarkers(self.__gray_img)
         corners, ids, rejected_corners, _ = self.__detector.refineDetectedMarkers(
-            gray,
+            self.__gray_img,
             self.__board,
             corners,
             ids,
@@ -59,7 +54,7 @@ class ArucoLocalization:
         aruco.drawDetectedMarkers(img, corners, ids)
 
         if ids is None or len(ids) == 0:
-            return gray, None, None
+            return self.__gray_img, None, None
 
         object_points, image_points = self.__board.matchImagePoints(corners, ids)
         if (
@@ -68,7 +63,7 @@ class ArucoLocalization:
             or image_points is None
             or len(image_points) == 0
         ):
-            return None, None, None
+            return self.__gray_img, None, None
 
         result, rvec, tvec = cv2.solvePnP(
             object_points,
@@ -78,7 +73,7 @@ class ArucoLocalization:
         )
 
         if not result:
-            return None, None, None
+            return self.__gray_img, None, None
 
         rot, _ = cv2.Rodrigues(rvec)
         pos = -(rot.T @ tvec)
@@ -86,4 +81,4 @@ class ArucoLocalization:
 
         cv2.drawFrameAxes(img, self.__cam_mtx, self.__cam_dist, rvec, tvec, 1.0)
 
-        return gray, pos.flatten(), rot
+        return self.__gray_img, pos.flatten(), rot

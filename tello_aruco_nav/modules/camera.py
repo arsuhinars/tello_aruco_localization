@@ -3,17 +3,17 @@ from typing import cast
 
 import cv2
 import numpy as np
-from djitellopy import Tello
 
-from tello_aruco_nav.exceptions import (
+from tello_aruco_nav.common.exceptions import (
     CvCameraInitException,
     CvCameraReadFailedException,
 )
+from tello_aruco_nav.modules.tello import Tello
 
 
 class BaseCamera(ABC):
     @abstractmethod
-    def read_image(self) -> np.ndarray: ...
+    def read_image(self) -> np.ndarray | None: ...
 
     @abstractmethod
     def release(self): ...
@@ -40,10 +40,10 @@ class CvCamera(BaseCamera):
 
 class TelloCamera(BaseCamera):
     def __init__(self, tello: Tello):
-        self.__frame_reader = tello.get_frame_read(True)
+        self.__tello = tello
 
     def read_image(self):
-        return cast(np.ndarray, self.__frame_reader.frame)
+        return self.__tello.read_next_frame()
 
     def release(self):
-        self.__frame_reader.stop()
+        self.__tello.stream_off()

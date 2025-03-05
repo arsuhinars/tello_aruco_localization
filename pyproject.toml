@@ -5,19 +5,19 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "djitellopy>=2.5.0",
+    "av>=14.2.0",
     "numpy>=2.2.3",
     "opencv-contrib-python>=4.11.0.86",
     "opencv-python>=4.11.0.86",
-    "pydantic-settings>=2.8.0",
+    "pydantic>=2.10.6",
     "pygame>=2.6.1",
     "rich>=13.9.4",
+    "simple-pid>=2.0.1",
     "typer>=0.15.1",
 ]
 
 [tool.mypy]
 plugins = ["numpy.typing.mypy_plugin"]
 
-[[tool.mypy.overrides]]
-module = ["djitellopy.*", "dearpygui.*"]
-follow_untyped_imports = true
+[tool.ruff]
+target-version = "py313"
