@@ -3,11 +3,11 @@ from typing import cast
 
 import cv2
 import numpy as np
-from djitellopy import Tello
 
 from tello_aruco_nav.common.utils import console
 from tello_aruco_nav.modules.camera import BaseCamera, CvCamera, TelloCamera
 from tello_aruco_nav.modules.gui import AlignHorizontal, AlignVertical, Gui
+from tello_aruco_nav.modules.tello import Tello, TelloConnectionState
 
 CHESSBOARD_SIZE = (9, 6)
 
@@ -20,7 +20,6 @@ def calibrate_camera(offline: bool = False, offline_camera_index: int = 0):
     else:
         tello = Tello()
         tello.connect()
-        tello.streamon()
         camera = TelloCamera(tello)
 
     gui = Gui()
@@ -45,8 +44,22 @@ def calibrate_camera(offline: bool = False, offline_camera_index: int = 0):
 
     console.log("App is running")
 
-    while gui.is_running():
+    while gui.is_running:
+        if tello is not None:
+            match tello.connection_state:
+                case TelloConnectionState.DISCONNECTED:
+                    gui.stop()
+                case TelloConnectionState.CONNECTING:
+                    gui.update()
+                    return
+                case TelloConnectionState.CONNECTED:
+                    if not tello.is_streaming:
+                        tello.stream_on()
+
         img = camera.read_image()
+        if img is None:
+            gui.update()
+            return
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY, gray_img)
 
         result, corners = cv2.findChessboardCorners(gray_img, CHESSBOARD_SIZE)
@@ -91,7 +104,7 @@ def calibrate_camera(offline: bool = False, offline_camera_index: int = 0):
     camera.release()
 
     if tello is not None:
-        tello.streamoff()
-        tello.end()
+        tello.stream_off()
+        tello.disconnect()
 
     console.log("App was stopped")

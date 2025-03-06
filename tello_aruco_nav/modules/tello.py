@@ -69,23 +69,23 @@ class Tello:
     def battery(self):
         return int(self.__state_dict["bat"])
 
+    @property
+    def height(self):
+        return self.__state_dict["h"] / 100.0
+
     def connect(self):
         self.__cmd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-        self.__client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.__client_sock.bind(("0.0.0.0", TELLO_COMMAND_PORT))
-        self.__client_sock.setblocking(False)
+        self.__cmd_sock.bind(("", TELLO_COMMAND_PORT))
+        self.__cmd_sock.setblocking(False)
 
         self.__state_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.__state_sock.bind(("0.0.0.0", TELLO_STATE_PORT))
+        self.__state_sock.bind(("", TELLO_STATE_PORT))
         self.__state_sock.setblocking(False)
-
-        self.__av_container.close()
 
         try:
             select([], [self.__cmd_sock], [])
             self.__cmd_sock.sendto(b"command", TELLO_ADDRESS)
-        except OSError:
+        except Exception:
             raise TelloFailedConnectException()
 
         self.__connection_state = TelloConnectionState.CONNECTING
@@ -94,21 +94,22 @@ class Tello:
         self.__is_flying = False
         self.__last_response_time = time()
         self.__last_frame_time = time()
+        self.__last_sent_message = b"command"
+        self.__retries_cnt = 0
 
         logger.info("Connecting")
 
     def disconnect(self):
         try:
             self.__cmd_sock.sendto(b"emergency", TELLO_ADDRESS)
-        except OSError:
+        except Exception:
             logger.exception("Failed to send emergency message during disconnecting")
 
         self.__cmd_sock.close()
-        self.__client_sock.close()
         self.__state_sock.close()
+        self.__av_container.close()
 
         del self.__cmd_sock
-        del self.__client_sock
         del self.__state_sock
         del self.__av_thread
 
@@ -123,20 +124,20 @@ class Tello:
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
-        self.__send_command(b"streamon")
+        self.__send_command_no_response(b"streamon")
         self.__av_container = av.open(
             f"udp://0.0.0.0:{TELLO_STREAM_PORT}",
             timeout=TIMEOUT_DELAY,
         )
-        self.__av_thread = Thread(target=self.__run_stream_thread)
-        self.__av_thread.run()
         self.__is_streaming = True
+        self.__av_thread = Thread(target=self.__run_stream_thread, daemon=True)
+        self.__av_thread.start()
 
     def stream_off(self):
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
-        self.__send_command(b"streamoff")
+        self.__send_command_no_response(b"streamoff")
 
         del self.__av_thread
 
@@ -161,7 +162,7 @@ class Tello:
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
-        self.__send_command(b"emergency")
+        self.__send_command_no_response(b"emergency")
         self.__is_flying = False
 
     def send_rc_control(
@@ -176,7 +177,7 @@ class Tello:
 
     def read_next_frame(self):
         if self.__connection_state != TelloConnectionState.CONNECTED:
-            raise TelloDisconnectedException()
+            return None
 
         if time() - self.__last_frame_time > TIMEOUT_DELAY:
             return None
@@ -187,17 +188,17 @@ class Tello:
         if self.__connection_state == TelloConnectionState.DISCONNECTED:
             return
 
-        if time() - self.__last_response_time > TIMEOUT_DELAY:
-            if (
-                self.__last_sent_message is not None
-                and self.__retries_cnt < MAX_RETRIES
-            ):
-                select([], [self.__cmd_sock], [])
-                self.__cmd_sock.sendto(self.__last_sent_message, TELLO_ADDRESS)
+        if (
+            self.__last_sent_message is not None
+            and time() - self.__last_response_time > TIMEOUT_DELAY
+        ):
+            if self.__retries_cnt < MAX_RETRIES:
+                # select([], [self.__cmd_sock], [])
+                # self.__cmd_sock.sendto(self.__last_sent_message, TELLO_ADDRESS)
                 self.__last_response_time = time()
                 self.__retries_cnt += 1
                 logger.warning(
-                    f"Response timeout exceeded. Retrying ({self.__retries_cnt} of {MAX_RETRIES})"
+                    f'Response timeout for "{self.__last_sent_message.decode("ascii")}" exceeded. Retrying ({self.__retries_cnt} of {MAX_RETRIES})'
                 )
             elif self.__connection_state == TelloConnectionState.CONNECTING:
                 logger.exception("Failed to connect")
@@ -206,10 +207,10 @@ class Tello:
                 logger.exception("Response timeout exceeded. Disconnected")
                 raise TelloDisconnectedException()
 
-        read_socks, _, _ = select([self.__client_sock, self.__state_sock], [], [], 0.0)
+        read_socks, _, _ = select([self.__cmd_sock, self.__state_sock], [], [], 0.0)
 
-        if self.__client_sock in read_socks:
-            match self.__client_sock.recv(256):
+        if self.__cmd_sock in read_socks:
+            match self.__cmd_sock.recv(256):
                 case b"ok":
                     if self.__connection_state == TelloConnectionState.CONNECTING:
                         self.__connection_state = TelloConnectionState.CONNECTED
@@ -245,7 +246,6 @@ class Tello:
                 if not self.__is_streaming:
                     self.__av_container.close()
                     break
-
                 img = frame.to_ndarray(format="rgb24")
                 self.__last_frame = img
                 self.__last_frame_time = time()

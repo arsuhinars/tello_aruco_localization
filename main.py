@@ -7,9 +7,10 @@ from tello_aruco_nav.common.utils import console
 
 if __name__ == "__main__":
     logging.basicConfig(
+        level=logging.INFO,
         style="{",
         format="{name}: {message}",
-        datefmt="%X",
+        datefmt="[%X]",
         handlers=[RichHandler(console=console)],
     )
 

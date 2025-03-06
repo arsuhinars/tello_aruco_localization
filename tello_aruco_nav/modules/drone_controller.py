@@ -1,4 +1,5 @@
 import logging
+from enum import IntEnum
 from time import time
 from typing import cast
 
@@ -20,18 +21,59 @@ MIN_VERTICAL_DISTANCE = 0.1
 # X forward, Y right, Z down
 
 
+class DroneState(IntEnum):
+    IDLE = 0
+    TAKING_OFF = 1
+    FLYING = 2
+    WAITING = 3
+    LANDING = 4
+
+
 class DroneController:
     def __init__(self, tello: Tello, mission: MissionData, markers: list[MarkerData]):
         self.__tello = tello
         self.__points = mission.waypoints
         self.__markers_map = {m.id: m for m in markers}
-        self.__curr_wp_idx = -1
+        self.__curr_wp_idx = -2
         self.__wait_start: float | None = None
         self.__rc_update_time = 0.0
         self.__last_wp_dist_v = 0.0
         self.__last_wp_delta_v = 0.0
-        self.__dist_pid = PID(1.0, 0.0, 0.0, setpoint=0.0)
-        self.__alt_pid = PID(1.0, 0.0, 0.0, setpoint=0.0)
+        self.__dist_pid = PID(
+            Kp=-60.0,
+            Ki=6.0,
+            Kd=12.0,
+            setpoint=0.0,
+            output_limits=(-60.0, 60.0),
+        )
+        self.__alt_pid = PID(
+            Kp=50.0,
+            Ki=2.0,
+            Kd=0.0,
+            setpoint=0.0,
+            output_limits=(-60.0, 60.0),
+        )
+
+    def start(self):
+        self.__curr_wp_idx = -1
+        logger.info("Mission started")
+
+    def stop(self):
+        self.__curr_wp_idx = len(self.__points)
+        logger.info("Mission stopping")
+
+    @property
+    def state(self):
+        if self.__curr_wp_idx == -2:
+            return DroneState.IDLE
+        if self.__curr_wp_idx == -1:
+            return DroneState.TAKING_OFF
+        elif self.__curr_wp_idx == len(self.__points):
+            return DroneState.LANDING
+        elif self.__wait_start is not None:
+            return DroneState.WAITING
+        else:
+            return DroneState.FLYING
 
     @property
     def waypoint_index(self):
@@ -39,7 +81,7 @@ class DroneController:
 
     @property
     def current_marker(self):
-        if self.__curr_wp_idx == 0 or self.__curr_wp_idx == len(self.__points):
+        if self.__curr_wp_idx == -1 or self.__curr_wp_idx == len(self.__points):
             return None
         return self.__markers_map[self.__points[self.__curr_wp_idx].marker_id]
 
@@ -51,26 +93,40 @@ class DroneController:
     def waypoint_altitude_delta(self):
         return self.__last_wp_delta_v
 
+    @property
+    def waypoint_wait_time(self):
+        if self.__wait_start is None:
+            return None
+
+        return (
+            self.__points[self.__curr_wp_idx].delay_after - time() + self.__wait_start
+        )
+
     def update(self, position: np.ndarray | None, rotation_matrix: np.ndarray | None):
-        if self.__curr_wp_idx == -1:
+        if self.__curr_wp_idx == -2:
+            return
+        elif self.__curr_wp_idx == -1:
             if self.__tello.is_busy:
                 return
 
-            logger.info("Takeoff")
-            self.__tello.takeoff()
-            self.__curr_wp_idx += 1
+            if not self.__tello.is_flying:
+                logger.info("Taking off")
+                self.__tello.takeoff()
+            else:
+                logger.info("Took off")
+                self.__curr_wp_idx += 1
             return
         elif self.__curr_wp_idx == len(self.__points):
             if self.__tello.is_busy:
                 return
 
-            logger.info("Land")
-            self.__tello.send_rc_control(0, 0, 0, 0)
-            self.__tello.land()
-            self.__curr_wp_idx += 1
-            return
-        elif self.__curr_wp_idx > len(self.__points):
-            self.__tello.send_rc_control(0, 0, 0, 0)
+            if self.__tello.is_flying:
+                logger.info("Landing")
+                self.__tello.send_rc_control(0, 0, 0, 0)
+                self.__tello.land()
+            else:
+                logger.info("Landed")
+                self.__curr_wp_idx = -2
             return
 
         if position is None or rotation_matrix is None:
@@ -85,7 +141,7 @@ class DroneController:
         center[1] = -wp.altitude
 
         dist_h = cast(float, np.linalg.norm(center[[0, 2]] - position[[0, 2]]))
-        delta_v = position[1] - center[1]
+        delta_v = self.__tello.height + center[1]
         self.__last_wp_dist_v = dist_h
         self.__last_wp_delta_v = delta_v
 
@@ -93,6 +149,7 @@ class DroneController:
         speed_h = speed_h if speed_h is not None else 0.0
         speed_v = self.__alt_pid(delta_v)
         speed_v = speed_v if speed_v is not None else 0.0
+        logging.info(f"s={speed_h}, v={speed_v}")
 
         if self.__wait_start is None:
             if dist_h < wp.radius:

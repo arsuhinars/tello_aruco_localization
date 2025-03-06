@@ -1,14 +1,13 @@
 import signal
 
-import cv2
 import pygame as pg
-from djitellopy import Tello
 
 from tello_aruco_nav.common.utils import console, euler_from_matrix, load_json
 from tello_aruco_nav.modules.aruco_localization import ArucoLocalization
-from tello_aruco_nav.modules.camera import BaseCamera, CvCamera, TelloCamera
-from tello_aruco_nav.modules.drone_controller import DroneController
+from tello_aruco_nav.modules.camera import TelloCamera
+from tello_aruco_nav.modules.drone_controller import DroneController, DroneState
 from tello_aruco_nav.modules.gui import AlignHorizontal, AlignVertical, Gui
+from tello_aruco_nav.modules.tello import Tello, TelloConnectionState
 from tello_aruco_nav.schemas.calibration import CalibrationData
 from tello_aruco_nav.schemas.map import MapData
 from tello_aruco_nav.schemas.mission import MissionData
@@ -18,8 +17,6 @@ def run_flight(
     map_file: str = "map.json",
     mission_file: str | None = None,
     calibration_file: str = "camera.json",
-    offline: bool = False,
-    offline_camera_index: int = 0,
 ):
     mission_data = (
         load_json(MissionData, mission_file)
@@ -29,28 +26,18 @@ def run_flight(
     calibration_data = load_json(CalibrationData, calibration_file)
     map_data = load_json(MapData, map_file)
 
-    camera: BaseCamera
-    if offline:
-        tello = None
-        camera = CvCamera(offline_camera_index)
-    else:
-        tello = Tello()
-        tello.connect()
-        tello.streamon()
-        camera = TelloCamera(tello)
-
+    tello = Tello()
+    camera = TelloCamera(tello)
     localizer = ArucoLocalization(
         map_data.markers,
         calibration_data.get_np_matrix(),
         calibration_data.get_np_dist_coeffs(),
         calibration_data.rotation,
     )
-    controller = (
-        DroneController(tello, mission_data, map_data.markers)
-        if tello is not None and mission_data is not None
-        else None
-    )
+    controller = DroneController(tello, mission_data, map_data.markers)
     gui = Gui()
+
+    tello.connect()
     gui.run()
 
     def stop(signum, frame):
@@ -65,8 +52,27 @@ def run_flight(
     console.log("App is running")
 
     while gui.is_running:
+        tello.update()
+        match tello.connection_state:
+            case TelloConnectionState.DISCONNECTED:
+                gui.stop()
+            case TelloConnectionState.CONNECTED:
+                if not tello.is_streaming:
+                    tello.stream_on()
+
+                if gui.is_key_just_pressed(pg.K_SPACE):
+                    if controller.state == DroneState.IDLE:
+                        controller.start()
+                    else:
+                        controller.stop()
+
+                if gui.is_key_just_pressed(pg.K_ESCAPE):
+                    tello.emergency()
+
         img = camera.read_image()
         gray, pos, rot_mtx = localizer.update(img)
+        controller.update(pos, rot_mtx)
+        gui.push_image(img)
 
         if pos is not None:
             gui.push_text(
@@ -82,54 +88,63 @@ def run_flight(
                 AlignVertical.TOP,
             )
 
-        if tello is not None:
-            speed = (
-                tello.get_speed_x() / 100.0,
-                tello.get_speed_y() / 100.0,
-                tello.get_speed_z() / 100.0,
-            )
-            cv2.putText(
-                img,
-                f"speed = {speed[0]:.2f}, {speed[1]:.2f}, {speed[2]:.2f}",
-                (20, 60),
-                cv2.FONT_HERSHEY_PLAIN,
-                1.0,
-                WHITE_COLOR,
-                1,
-            )
-            cv2.putText(
-                img,
-                f"battery = {tello.get_battery()}%",
-                (20, 80),
-                cv2.FONT_HERSHEY_PLAIN,
-                1.0,
-                WHITE_COLOR,
-                1,
-            )
+        gui.push_text(
+            f"bat={tello.battery:.0f}%", AlignHorizontal.RIGHT, AlignVertical.TOP
+        )
+        gui.push_text(f"h={tello.height}", AlignHorizontal.RIGHT, AlignVertical.TOP)
 
-        window_width, window_height = pg.display.get_window_size()
-        if img is not None and (
-            img.shape[1] != window_width or img.shape[0] != window_height
-        ):
-            pg.display.set_mode((img.shape[1], img.shape[0]))
+        match controller.state:
+            case DroneState.IDLE:
+                gui.push_text(
+                    "idle",
+                    AlignHorizontal.CENTER,
+                    AlignVertical.BOTTOM,
+                )
+            case DroneState.TAKING_OFF:
+                gui.push_text(
+                    "taking off",
+                    AlignHorizontal.CENTER,
+                    AlignVertical.BOTTOM,
+                )
+            case DroneState.FLYING:
+                gui.push_text(
+                    f"flying to wp {controller.waypoint_index} with id={controller.current_marker.id}",
+                    AlignHorizontal.CENTER,
+                    AlignVertical.BOTTOM,
+                )
+                gui.push_text(
+                    f"dist={controller.waypoint_distance:.2f}, delta_alt={controller.waypoint_altitude_delta:.2f}",
+                    AlignHorizontal.CENTER,
+                    AlignVertical.BOTTOM,
+                )
+            case DroneState.WAITING:
+                gui.push_text(
+                    f"waiting in wp {controller.waypoint_index} with id={controller.current_marker.id}",
+                    AlignHorizontal.CENTER,
+                    AlignVertical.BOTTOM,
+                )
+                gui.push_text(
+                    f"{controller.waypoint_wait_time:.1f} s. remained",
+                    AlignHorizontal.CENTER,
+                    AlignVertical.BOTTOM,
+                )
+                gui.push_text(
+                    f"dist={controller.waypoint_distance:.2f}, delta_alt={controller.waypoint_altitude_delta:.2f}",
+                    AlignHorizontal.CENTER,
+                    AlignVertical.BOTTOM,
+                )
+            case DroneState.LANDING:
+                gui.push_text(
+                    "landing",
+                    AlignHorizontal.CENTER,
+                    AlignVertical.BOTTOM,
+                )
 
-        if img is not None and img.size != 0:
-            pg.surfarray.blit_array(surface, img.transpose(1, 0, 2))
-        pg.display.flip()
-
-        if controller is not None:
-            controller.update(pos, rot_mtx)
-
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                is_running = False
+        gui.update()
 
     camera.release()
 
-    if tello is not None:
-        tello.streamoff()
-        tello.end()
-
-    pg.quit()
+    tello.stream_off()
+    tello.disconnect()
 
     console.log("App was stopped")

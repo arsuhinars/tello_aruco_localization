@@ -33,7 +33,7 @@ class ArucoLocalization:
 
         self.__gray_img: np.ndarray | None = None
 
-    def update(self, img: MatLike):
+    def update(self, img: MatLike | None):
         if img is None:
             return None, None, None
 

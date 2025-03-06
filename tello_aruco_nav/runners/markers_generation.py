@@ -4,12 +4,11 @@ import cv2
 import numpy as np
 from cv2 import aruco
 
-from tello_aruco_nav.schemas.calibration import AppSettings
+from tello_aruco_nav.modules.aruco_localization import ARUCO_DICTIONARY
 
 
 def generate_markers(ids: list[int], output_dir: str = "", size: int = 200):
-    settings = AppSettings()
-    dictionary = aruco.getPredefinedDictionary(settings.aruco_dictionary)
+    dictionary = aruco.getPredefinedDictionary(ARUCO_DICTIONARY)
     img = np.zeros((size, size, 3), np.uint8)
 
     os.makedirs(output_dir, exist_ok=True)
