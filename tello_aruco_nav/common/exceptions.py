@@ -13,6 +13,11 @@ class CvCameraReadFailedException(AppException):
         super().__init__("Failed to read next frame")
 
 
+class TelloAlreadyConnectedException(AppException):
+    def __init__(self):
+        super().__init__("Tello is already connected")
+
+
 class TelloBusyException(AppException):
     def __init__(self):
         super().__init__(

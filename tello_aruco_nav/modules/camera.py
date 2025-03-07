@@ -43,7 +43,7 @@ class TelloCamera(BaseCamera):
         self.__tello = tello
 
     def read_image(self):
-        return self.__tello.read_next_frame()
+        return self.__tello.get_video_frame()
 
     def release(self):
         self.__tello.stream_off()

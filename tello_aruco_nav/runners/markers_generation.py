@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from cv2 import aruco
 
-from tello_aruco_nav.modules.aruco_localization import ARUCO_DICTIONARY
+from tello_aruco_nav.common.utils import ARUCO_DICTIONARY
 
 
 def generate_markers(ids: list[int], output_dir: str = "", size: int = 200):

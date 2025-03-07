@@ -3,10 +3,8 @@ import numpy as np
 from cv2 import aruco
 from cv2.typing import MatLike
 
-from tello_aruco_nav.common.utils import Float3, rotation_matrix_euler
+from tello_aruco_nav.common.utils import ARUCO_DICTIONARY, Float3, rotation_matrix_euler
 from tello_aruco_nav.schemas.map import MarkerData
-
-ARUCO_DICTIONARY = aruco.DICT_4X4_250
 
 
 class ArucoLocalization:

@@ -1,10 +1,13 @@
 from typing import Type, TypeAlias
 
 import numpy as np
+from cv2 import aruco
 from pydantic import BaseModel
 from rich.console import Console
 
 console = Console()
+
+ARUCO_DICTIONARY = aruco.DICT_4X4_250
 
 Float3: TypeAlias = tuple[float, float, float]
 
