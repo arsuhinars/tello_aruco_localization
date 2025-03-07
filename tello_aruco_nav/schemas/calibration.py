@@ -12,6 +12,10 @@ class CalibrationData(BaseModel):
     dist_coeffs: Annotated[list[float], Len(5, 5)]
     rotation: Float3
 
+    pid_x: Float3
+    pid_y: Float3
+    pid_z: Float3
+
     def get_np_matrix(self):
         return np.array(self.matrix, np.float32)
 

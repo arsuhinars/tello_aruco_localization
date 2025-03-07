@@ -18,13 +18,6 @@ class TelloAlreadyConnectedException(AppException):
         super().__init__("Tello is already connected")
 
 
-class TelloBusyException(AppException):
-    def __init__(self):
-        super().__init__(
-            "Unable to send command, because waiting for response from another one"
-        )
-
-
 class TelloErrorException(AppException):
     def __init__(self):
         super().__init__("Tello returned error response")

@@ -44,6 +44,7 @@ class Tello:
         self.__lock = asyncio.Lock()
         self.__response_event = asyncio.Event()
         self.__last_frame: np.ndarray | None = None
+        self.__last_frame_time = 0.0
         self.__state_dict: dict[str, float] = defaultdict(lambda: 0.0)
 
     @property
@@ -73,9 +74,11 @@ class Tello:
         logger.info("Connecting")
 
         self.__cmd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.__cmd_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.__cmd_sock.bind(("", TELLO_COMMAND_PORT))
 
         self.__state_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.__cmd_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.__state_sock.bind(("", TELLO_STATE_PORT))
         self.__state_sock.settimeout(TIMEOUT_DELAY)
 
@@ -102,12 +105,15 @@ class Tello:
                 async with asyncio.timeout(TIMEOUT_DELAY):
                     await self.__response_event.wait()
             except asyncio.TimeoutError:
+                self.__on_disconnected()
                 logger.error("Failed to connect")
                 raise TelloFailedConnectException()
 
+        self.__connection_state = TelloConnectionState.CONNECTED
+
         logger.info("Connected")
 
-    async def disconnect(self):
+    def disconnect(self):
         self.__on_disconnected()
         logger.info("Disconnected")
 
@@ -115,7 +121,7 @@ class Tello:
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
-        self.__send_command_no_response(b"streamon")
+        await self.__send_command(b"streamon")
         self.__av_container = av.open(
             f"udp://0.0.0.0:{TELLO_STREAM_PORT}",
             timeout=TIMEOUT_DELAY,
@@ -124,9 +130,11 @@ class Tello:
         self.__av_thread = Thread(target=self.__run_stream_thread, daemon=True)
         self.__av_thread.start()
 
-    async def stream_off(self):
+        logger.info("Stream on")
+
+    def stream_off(self):
         if self.__connection_state != TelloConnectionState.CONNECTED:
-            raise TelloDisconnectedException()
+            return
 
         self.__send_command_no_response(b"streamoff")
 
@@ -134,26 +142,28 @@ class Tello:
 
         self.__is_streaming = False
 
+        logger.info("Stream off")
+
     async def takeoff(self):
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
-        self.__send_command(b"takeoff")
         self.__is_flying = True
+        await self.__send_command(b"takeoff")
 
     async def land(self):
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
-        self.__send_command(b"land")
+        await self.__send_command(b"land")
         self.__is_flying = False
 
-    async def emergency(self):
+    def emergency(self):
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
-        self.__send_command_no_response(b"emergency")
         self.__is_flying = False
+        self.__send_command_no_response(b"emergency")
 
     def send_rc_control(
         self, left_right: int, forward_backward: int, up_down: int, yaw: int
@@ -177,14 +187,19 @@ class Tello:
     async def __send_command(self, command: bytes):
         async with self.__lock:
             self.__cmd_sock.sendto(command, TELLO_ADDRESS)
-            for _ in range(MAX_RETRIES_COUNT):
+            i = 0
+            while i < MAX_RETRIES_COUNT:
                 try:
                     async with asyncio.timeout(TIMEOUT_DELAY):
                         await self.__response_event.wait()
+                        break
                 except asyncio.TimeoutError:
                     if self.__connection_state == TelloConnectionState.DISCONNECTED:
-                        return
-                    continue
+                        raise TelloDisconnectedException()
+                    i += 1
+                    if i == MAX_RETRIES_COUNT:
+                        self.__on_disconnected()
+                        raise TelloDisconnectedException()
 
     def __send_command_no_response(self, command: bytes):
         self.__cmd_sock.sendto(command, TELLO_ADDRESS)
@@ -192,6 +207,9 @@ class Tello:
     def __on_disconnected(self):
         if self.__connection_state == TelloConnectionState.DISCONNECTED:
             return
+
+        self.__connection_state = TelloConnectionState.DISCONNECTED
+        self.__is_flying = False
 
         try:
             if self.__is_streaming:
@@ -211,20 +229,12 @@ class Tello:
         if self.__is_streaming:
             self.__is_streaming = False
             del self.__av_thread
-            del self.__av_container
-
-        self.__connection_state = TelloConnectionState.DISCONNECTED
-        self.__is_flying = False
 
     def __run_response_thread(self):
         try:
             while self.__connection_state != TelloConnectionState.DISCONNECTED:
                 match self.__cmd_sock.recv(8):
                     case b"ok":
-                        if self.__connection_state == TelloConnectionState.CONNECTING:
-                            self.__connection_state = TelloConnectionState.CONNECTED
-                            logger.info("Connected")
-                        self.__last_response_time = time()
                         self.__response_event.set()
                     case b"error":
                         self.__on_disconnected()
@@ -242,7 +252,7 @@ class Tello:
                         self.__state_dict[m.group(1)] = float(m.group(2))
                 except TimeoutError:
                     self.__on_disconnected()
-                    logger.exception("State timeout exceeded. Disconnected")
+                    logger.error("State timeout exceeded. Disconnected")
                     break
         except Exception:
             self.__on_disconnected()
@@ -261,3 +271,4 @@ class Tello:
 
         self.__last_frame = None
         self.__av_container.close()
+        del self.__av_container

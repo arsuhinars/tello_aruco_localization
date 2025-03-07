@@ -79,4 +79,4 @@ class ArucoLocalization:
 
         cv2.drawFrameAxes(img, self.__cam_mtx, self.__cam_dist, rvec, tvec, 1.0)
 
-        return self.__gray_img, pos.flatten(), rot
+        return self.__gray_img, pos.flatten(), rot.T

@@ -40,6 +40,7 @@ class Gui:
             defaultdict(list)
         )
         self.__pressed_keys: list[int] = []
+        self.__down_keys: list[int] = []
         self.__clock = pg.time.Clock()
 
     @property
@@ -77,6 +78,9 @@ class Gui:
 
     def is_key_just_pressed(self, key: int):
         return key in self.__pressed_keys
+
+    def is_key_down(self, key: int):
+        return key in self.__down_keys
 
     def __render(self):
         if time() - self.__image_time > 1.0:
@@ -181,3 +185,6 @@ class Gui:
                     self.stop()
                 case pg.KEYDOWN:
                     self.__pressed_keys.append(event.key)
+                    self.__down_keys.append(event.key)
+                case pg.KEYUP:
+                    self.__down_keys.remove(event.key)
