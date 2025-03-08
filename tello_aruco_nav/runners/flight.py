@@ -20,6 +20,7 @@ from tello_aruco_nav.modules.gui import (
     AlignVertical,
     Gui,
 )
+from tello_aruco_nav.modules.plotter import Plotter
 from tello_aruco_nav.modules.tello import Tello, TelloConnectionState
 from tello_aruco_nav.modules.tello_controller import TelloController, TelloState
 from tello_aruco_nav.schemas.calibration import CalibrationData
@@ -27,6 +28,9 @@ from tello_aruco_nav.schemas.map import MapData
 from tello_aruco_nav.schemas.mission import MissionData
 
 logger = logging.getLogger("flight")
+
+
+RECONNECT_TIME = 5.0
 
 
 def run_flight(
@@ -63,6 +67,7 @@ class FlightRunner:
             calibration_data.pid_z,
         )
         self.__gui = Gui()
+        self.__plotter = Plotter(self.__tello, self.__controller)
 
         self.__is_running = False
         self.__camera_img: np.ndarray | None = None
@@ -91,6 +96,7 @@ class FlightRunner:
             logger.exception("Exception occurred during main loop")
 
         self.__gui.stop()
+        self.__plotter.stop()
         self.__camera.release()
         console.log("Stopping")
         if self.__tello.is_flying:
@@ -105,6 +111,7 @@ class FlightRunner:
 
     async def __main_loop(self):
         asyncio.create_task(self.__gui_loop())
+        self.__plotter.start()
 
         while self.__is_running:
             try:
@@ -115,7 +122,7 @@ class FlightRunner:
                     controller_task = asyncio.create_task(self.__controller.run())
                     await self.__flight_loop()
                 except (TelloDisconnectedException, TelloErrorException):
-                    logger.error("Reconnecting in 1 s.")
+                    logger.error(f"Reconnecting in {RECONNECT_TIME} s.")
                 finally:
                     self.__camera_img = None
                     self.__camera_gray_img = None
@@ -125,9 +132,9 @@ class FlightRunner:
                 TelloDisconnectedException,
                 TelloErrorException,
             ):
-                logger.error("Retrying in 1 s.")
+                logger.error(f"Retrying in {RECONNECT_TIME} s.")
 
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(RECONNECT_TIME)
 
     async def __flight_loop(self):
         while (
@@ -159,9 +166,17 @@ class FlightRunner:
                     ]:
                         self.__controller.state = TelloState.LANDING
                         self.__controller.manual_control = None
-                        self.__controller.set_target_marker_id(None, None)
+                        self.__controller.set_target_marker_id(None)
                     else:
                         self.__controller.state = TelloState.TAKEOFF
+
+                if (
+                    self.__gui.is_key_just_pressed(pg.K_m)
+                    and self.__controller.is_flying
+                ):
+                    self.__controller.manual_control = None
+                    self.__controller.set_target_marker_id(41)
+                    self.__controller.target_altitude = 1.0
 
                 control = [0, 0, 0, 0]
                 has_control = False
@@ -197,7 +212,7 @@ class FlightRunner:
                     self.__tello.emergency()
                     self.__controller.state = TelloState.IDLE
                     self.__controller.manual_control = None
-                    self.__controller.set_target_marker_id(None, None)
+                    self.__controller.set_target_marker_id(None)
 
             self.__gui.push_image(self.__camera_img)
 
@@ -221,7 +236,7 @@ class FlightRunner:
                 AlignVertical.TOP,
             )
             self.__gui.push_text(
-                f"h={self.__tello.height}", AlignHorizontal.RIGHT, AlignVertical.TOP
+                f"h={self.__tello.height} m.", AlignHorizontal.RIGHT, AlignVertical.TOP
             )
 
             match self.__controller.state:
@@ -242,11 +257,12 @@ class FlightRunner:
                         AlignHorizontal.CENTER,
                         AlignVertical.TOP,
                     )
-                    self.__gui.push_text(
-                        f"dist={marker_dist:.2f}, delta_alt={marker_alt_delta:.2f}",
-                        AlignHorizontal.CENTER,
-                        AlignVertical.TOP,
-                    )
+                    if marker_dist is not None:
+                        self.__gui.push_text(
+                            f"dist={marker_dist:.2f} m., delta_alt={marker_alt_delta:.2f} m.",
+                            AlignHorizontal.CENTER,
+                            AlignVertical.TOP,
+                        )
                 case TelloState.MANUAL_CONTROL:
                     control = self.__controller.manual_control
                     self.__gui.push_text(

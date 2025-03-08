@@ -133,7 +133,10 @@ class Tello:
         logger.info("Stream on")
 
     def stream_off(self):
-        if self.__connection_state != TelloConnectionState.CONNECTED:
+        if (
+            self.__connection_state != TelloConnectionState.CONNECTED
+            or not self.__is_streaming
+        ):
             return
 
         self.__send_command_no_response(b"streamoff")

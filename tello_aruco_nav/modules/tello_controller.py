@@ -70,6 +70,14 @@ class TelloController:
         self.__state = value
 
     @property
+    def is_flying(self):
+        return self.__state in [
+            TelloState.GO_TO_MARKER,
+            TelloState.WAITING,
+            TelloState.MANUAL_CONTROL,
+        ]
+
+    @property
     def marker_dist(self):
         return self.__marker_dist
 
@@ -89,9 +97,7 @@ class TelloController:
     def manual_control(self, control: tuple[int, int, int, int] | None):
         self.__manual_controls = control
 
-    def set_target_marker_id(
-        self, marker_id: int | None, target_altitude: float | None
-    ):
+    def set_target_marker_id(self, marker_id: int | None):
         self.__target_marker_id = marker_id
         self.__manual_controls = None
         if marker_id is not None:
@@ -99,9 +105,14 @@ class TelloController:
             self.__pid_x.setpoint = x
             self.__pid_y.setpoint = z
 
-        if target_altitude is not None:
-            self.__target_altitude = target_altitude
-            self.__pid_y.setpoint = self.__target_altitude
+    @property
+    def target_altitude(self):
+        return self.__target_altitude
+
+    @target_altitude.setter
+    def target_altitude(self, value: float):
+        self.__target_altitude = value
+        self.__pid_y.setpoint = self.__target_altitude
 
     def feed_location(self, position: np.ndarray | None, rotation: np.ndarray | None):
         self.__position = position
