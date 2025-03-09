@@ -13,7 +13,7 @@ from tello_aruco_nav.schemas.map import MarkerData
 
 logger = logging.getLogger("controller")
 
-UPDATE_DELAY = 0.2
+UPDATE_DELAY = 0.02
 
 # X forward, Y right, Z down
 
@@ -53,6 +53,9 @@ class TelloController:
         self.__marker_dist: float | None = None
         self.__marker_delta_alt = 0.0
         self.__state = TelloState.IDLE
+        self.__takeoff_event = asyncio.Event()
+        self.__land_event = asyncio.Event()
+        self.__land_event.set()
 
         self.__pid_x = PID(*pid_x, output_limits=(-60.0, 60.0))
         self.__pid_x_state = PidState()
@@ -77,6 +80,12 @@ class TelloController:
             TelloState.MANUAL_CONTROL,
         ]
 
+    async def on_take_off(self):
+        await self.__takeoff_event.wait()
+
+    async def on_landed(self):
+        await self.__land_event.wait()
+
     @property
     def marker_dist(self):
         return self.__marker_dist
@@ -86,10 +95,6 @@ class TelloController:
         return self.__marker_delta_alt
 
     @property
-    def marker_id(self):
-        return self.__target_marker_id
-
-    @property
     def manual_control(self):
         return self.__manual_controls
 
@@ -97,11 +102,15 @@ class TelloController:
     def manual_control(self, control: tuple[int, int, int, int] | None):
         self.__manual_controls = control
 
-    def set_target_marker_id(self, marker_id: int | None):
-        self.__target_marker_id = marker_id
-        self.__manual_controls = None
-        if marker_id is not None:
-            x, _, z = self.__markers_map[marker_id].center
+    @property
+    def target_marker_id(self):
+        return self.__target_marker_id
+
+    @target_marker_id.setter
+    def target_marker_id(self, value: int | None):
+        self.__target_marker_id = value
+        if value is not None:
+            x, _, z = self.__markers_map[value].center
             self.__pid_x.setpoint = x
             self.__pid_y.setpoint = z
 
@@ -161,12 +170,18 @@ class TelloController:
                     ...
                 case TelloState.TAKEOFF:
                     logger.info("Taking off")
-                    await self.__tello.takeoff()
+                    if not self.__tello.is_flying:
+                        await self.__tello.takeoff()
                     self.__state = TelloState.WAITING
+                    self.__takeoff_event.set()
+                    self.__land_event.clear()
                     logger.info("Took off")
                 case TelloState.LANDING:
                     logger.info("Landing")
-                    await self.__tello.land()
+                    if self.__tello.is_flying:
+                        await self.__tello.land()
+                    self.__land_event.set()
+                    self.__takeoff_event.clear()
                     logger.info("Landed")
                     self.__state = TelloState.IDLE
                 case _:

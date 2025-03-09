@@ -4,7 +4,6 @@ import signal
 from time import time
 
 import numpy as np
-import pygame as pg
 
 from tello_aruco_nav.common.exceptions import (
     TelloDisconnectedException,
@@ -14,22 +13,24 @@ from tello_aruco_nav.common.exceptions import (
 from tello_aruco_nav.common.utils import console, euler_from_matrix, load_json
 from tello_aruco_nav.modules.aruco_localization import ArucoLocalization
 from tello_aruco_nav.modules.camera import TelloCamera
-from tello_aruco_nav.modules.gui import (
-    WINDOW_FRAMERATE,
+from tello_aruco_nav.modules.flight_controller import FlightController, FlightMode
+from tello_aruco_nav.modules.hud import (
+    HUD_FRAMERATE,
     AlignHorizontal,
     AlignVertical,
-    Gui,
+    Hud,
 )
-from tello_aruco_nav.modules.plotter import Plotter
+from tello_aruco_nav.modules.mission_controller import MissionController
 from tello_aruco_nav.modules.tello import Tello, TelloConnectionState
 from tello_aruco_nav.modules.tello_controller import TelloController, TelloState
+from tello_aruco_nav.modules.ui import Ui
 from tello_aruco_nav.schemas.calibration import CalibrationData
 from tello_aruco_nav.schemas.map import MapData
-from tello_aruco_nav.schemas.mission import MissionData
 
 logger = logging.getLogger("flight")
 
 
+UPDATE_TIME = 0.03
 RECONNECT_TIME = 5.0
 
 
@@ -43,11 +44,6 @@ def run_flight(
 
 class FlightRunner:
     def __init__(self, map_file: str, mission_file: str | None, calibration_file: str):
-        mission_data = (
-            load_json(MissionData, mission_file)
-            if mission_file is not None
-            else MissionData(waypoints=[])
-        )
         calibration_data = load_json(CalibrationData, calibration_file)
         map_data = load_json(MapData, map_file)
 
@@ -66,8 +62,18 @@ class FlightRunner:
             calibration_data.pid_y,
             calibration_data.pid_z,
         )
-        self.__gui = Gui()
-        self.__plotter = Plotter(self.__tello, self.__controller)
+        self.__mission_controller = MissionController(mission_file, self.__controller)
+        self.__hud = Hud()
+        self.__flight_controller = FlightController(
+            self.__tello, self.__mission_controller, self.__controller
+        )
+        self.__ui = Ui(
+            self.__tello,
+            self.__controller,
+            self.__mission_controller,
+            self.__flight_controller,
+            self.__hud,
+        )
 
         self.__is_running = False
         self.__camera_img: np.ndarray | None = None
@@ -95,8 +101,7 @@ class FlightRunner:
         except Exception:
             logger.exception("Exception occurred during main loop")
 
-        self.__gui.stop()
-        self.__plotter.stop()
+        self.__ui.stop()
         self.__camera.release()
         console.log("Stopping")
         if self.__tello.is_flying:
@@ -110,8 +115,8 @@ class FlightRunner:
         self.__task.cancel()
 
     async def __main_loop(self):
-        asyncio.create_task(self.__gui_loop())
-        self.__plotter.start()
+        asyncio.create_task(self.__hud_loop())
+        self.__ui.start()
 
         while self.__is_running:
             try:
@@ -146,142 +151,115 @@ class FlightRunner:
                 self.__localizer.update(self.__camera_img)
             )
             self.__controller.feed_location(self.__aruco_pos, self.__aruco_rot)
-            await asyncio.sleep(0.0)
+            await asyncio.sleep(UPDATE_TIME)
 
-    async def __gui_loop(self):
-        self.__gui.run()
-
+    async def __hud_loop(self):
         last_frame_time = time()
-        frame_delay = 1.0 / WINDOW_FRAMERATE
+        frame_delay = 1.0 / HUD_FRAMERATE
         while self.__is_running:
-            if not self.__gui.is_running:
+            if not self.__ui.is_running:
                 self.stop()
                 break
 
-            if self.__tello.connection_state == TelloConnectionState.CONNECTED:
-                if self.__gui.is_key_just_pressed(pg.K_SPACE):
-                    if self.__controller.state not in [
-                        TelloState.IDLE,
-                        TelloState.LANDING,
-                    ]:
-                        self.__controller.state = TelloState.LANDING
-                        self.__controller.manual_control = None
-                        self.__controller.set_target_marker_id(None)
-                    else:
-                        self.__controller.state = TelloState.TAKEOFF
-
-                if (
-                    self.__gui.is_key_just_pressed(pg.K_m)
-                    and self.__controller.is_flying
-                ):
-                    self.__controller.manual_control = None
-                    self.__controller.set_target_marker_id(41)
-                    self.__controller.target_altitude = 1.0
-
-                control = [0, 0, 0, 0]
-                has_control = False
-                if self.__gui.is_key_down(pg.K_w):
-                    control[1] += 40
-                    has_control = True
-                if self.__gui.is_key_down(pg.K_a):
-                    control[0] -= 40
-                    has_control = True
-                if self.__gui.is_key_down(pg.K_s):
-                    control[1] -= 40
-                    has_control = True
-                if self.__gui.is_key_down(pg.K_d):
-                    control[0] += 40
-                    has_control = True
-                if self.__gui.is_key_down(pg.K_LSHIFT):
-                    control[2] += 40
-                    has_control = True
-                if self.__gui.is_key_down(pg.K_LCTRL):
-                    control[2] -= 40
-                    has_control = True
-                if self.__gui.is_key_down(pg.K_q):
-                    control[3] -= 40
-                    has_control = True
-                if self.__gui.is_key_down(pg.K_e):
-                    control[3] += 40
-                    has_control = True
-                self.__controller.manual_control = (
-                    tuple(control) if has_control else None
-                )
-
-                if self.__gui.is_key_just_pressed(pg.K_ESCAPE):
-                    self.__tello.emergency()
-                    self.__controller.state = TelloState.IDLE
-                    self.__controller.manual_control = None
-                    self.__controller.set_target_marker_id(None)
-
-            self.__gui.push_image(self.__camera_img)
+            self.__hud.push_image(self.__camera_img)
 
             if self.__aruco_pos is not None:
-                self.__gui.push_text(
+                self.__hud.push_text(
                     f"x={self.__aruco_pos[0]:.2f}, y={self.__aruco_pos[1]:.2f}, z={self.__aruco_pos[2]:.2f}",
                     AlignHorizontal.LEFT,
                     AlignVertical.TOP,
                 )
             if self.__aruco_rot is not None:
                 euler = euler_from_matrix(self.__aruco_rot)
-                self.__gui.push_text(
+                self.__hud.push_text(
                     f"pitch={euler[0]:.0f}, yaw={euler[1]:.0f}, roll={euler[2]:.0f}",
                     AlignHorizontal.LEFT,
                     AlignVertical.TOP,
                 )
 
-            self.__gui.push_text(
+            self.__hud.push_text(
                 f"bat={self.__tello.battery:.0f}%",
                 AlignHorizontal.RIGHT,
                 AlignVertical.TOP,
             )
-            self.__gui.push_text(
+            self.__hud.push_text(
                 f"h={self.__tello.height} m.", AlignHorizontal.RIGHT, AlignVertical.TOP
             )
 
             match self.__controller.state:
                 case TelloState.IDLE:
-                    self.__gui.push_text(
+                    self.__hud.push_text(
                         "idle", AlignHorizontal.CENTER, AlignVertical.TOP
                     )
                 case TelloState.TAKEOFF:
-                    self.__gui.push_text(
+                    self.__hud.push_text(
                         "taking off", AlignHorizontal.CENTER, AlignVertical.TOP
                     )
                 case TelloState.GO_TO_MARKER:
-                    marker_id = self.__controller.marker_id
+                    marker_id = self.__controller.target_marker_id
                     marker_dist = self.__controller.marker_dist
                     marker_alt_delta = self.__controller.marker_alt_delta
-                    self.__gui.push_text(
-                        f"flying to marker with id={marker_id}",
-                        AlignHorizontal.CENTER,
-                        AlignVertical.TOP,
-                    )
+                    if marker_id is not None:
+                        self.__hud.push_text(
+                            f"flying to marker with id={marker_id}",
+                            AlignHorizontal.CENTER,
+                            AlignVertical.TOP,
+                        )
                     if marker_dist is not None:
-                        self.__gui.push_text(
+                        self.__hud.push_text(
                             f"dist={marker_dist:.2f} m., delta_alt={marker_alt_delta:.2f} m.",
                             AlignHorizontal.CENTER,
                             AlignVertical.TOP,
                         )
                 case TelloState.MANUAL_CONTROL:
                     control = self.__controller.manual_control
-                    self.__gui.push_text(
+                    self.__hud.push_text(
                         "manual", AlignHorizontal.CENTER, AlignVertical.TOP
                     )
                     if control is not None:
-                        self.__gui.push_text(
+                        self.__hud.push_text(
                             f"x={control[0]}, y={control[2]}, z={control[1]}",
                             AlignHorizontal.CENTER,
                             AlignVertical.TOP,
                         )
                 case TelloState.WAITING:
-                    self.__gui.push_text(
+                    self.__hud.push_text(
                         "waiting", AlignHorizontal.CENTER, AlignVertical.TOP
                     )
                 case TelloState.LANDING:
-                    self.__gui.push_text(
+                    self.__hud.push_text(
                         "landing", AlignHorizontal.CENTER, AlignVertical.TOP
                     )
 
-            self.__gui.update()
+            match self.__flight_controller.mode:
+                case FlightMode.MANUAL:
+                    self.__hud.push_text(
+                        "manual", AlignHorizontal.CENTER, AlignVertical.BOTTOM
+                    )
+                case FlightMode.FOLLOW:
+                    marker_id = self.__flight_controller.target_marker_id
+                    if marker_id is not None:
+                        self.__hud.push_text(
+                            f"following marker with id={marker_id}",
+                            AlignHorizontal.CENTER,
+                            AlignVertical.BOTTOM,
+                        )
+                case FlightMode.MISSION:
+                    wp_idx = self.__mission_controller.waypoint_index
+                    wp_cnt = self.__mission_controller.waypoints_count
+
+                    if wp_idx is not None:
+                        self.__hud.push_text(
+                            f"running mission ({wp_idx + 1}/{wp_cnt})",
+                            AlignHorizontal.CENTER,
+                            AlignVertical.BOTTOM,
+                        )
+                    else:
+                        self.__hud.push_text(
+                            "running mission",
+                            AlignHorizontal.CENTER,
+                            AlignVertical.BOTTOM,
+                        )
+
+            self.__hud.update()
             await asyncio.sleep(max(frame_delay - time() + last_frame_time, 0.0))

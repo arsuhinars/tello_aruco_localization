@@ -6,7 +6,7 @@ import numpy as np
 
 from tello_aruco_nav.common.utils import console
 from tello_aruco_nav.modules.camera import BaseCamera, CvCamera, TelloCamera
-from tello_aruco_nav.modules.gui import AlignHorizontal, AlignVertical, Gui
+from tello_aruco_nav.modules.hud import AlignHorizontal, AlignVertical, Hud
 from tello_aruco_nav.modules.tello import Tello, TelloConnectionState
 
 CHESSBOARD_SIZE = (9, 6)
@@ -22,7 +22,7 @@ def calibrate_camera(offline: bool = False, offline_camera_index: int = 0):
         tello.connect()
         camera = TelloCamera(tello)
 
-    gui = Gui()
+    gui = Hud()
     gui.run()
     frame_counter = 0
     object_points = np.zeros(
