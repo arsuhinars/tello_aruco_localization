@@ -15,6 +15,7 @@ class CalibrationData(BaseModel):
     pid_x: Float3
     pid_y: Float3
     pid_z: Float3
+    rates: Float3
 
     def get_np_matrix(self):
         return np.array(self.matrix, np.float32)

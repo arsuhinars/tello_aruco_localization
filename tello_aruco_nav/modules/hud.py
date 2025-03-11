@@ -61,10 +61,10 @@ class Hud:
             if input_width != target_width or input_height != target_height:
                 target_width = input_width
                 target_height = input_height
+                # self.__surface = pg.display.set_mode((input_width, input_height))
                 self.__buffer_image = self.__input_image.copy()
             else:
                 np.copyto(self.__buffer_image, self.__input_image)
-
             cv2.line(
                 self.__buffer_image,
                 ((input_width - CURSOR_SIZE) // 2, input_height // 2),
@@ -144,4 +144,7 @@ class Hud:
         if self.__result_image.shape != self.__buffer_image.shape:
             self.__result_image = self.__buffer_image.copy()
         else:
-            np.copyto(self.__result_image, self.__buffer_image)
+            self.__result_image, self.__buffer_image = (
+                self.__buffer_image,
+                self.__result_image,
+            )

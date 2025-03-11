@@ -1,5 +1,6 @@
 from threading import Thread
 from time import sleep
+from typing import cast
 
 import numpy as np
 from imgui_bundle import hello_imgui, imgui, immapp, immvision, implot  # type: ignore
@@ -12,7 +13,7 @@ from tello_aruco_nav.modules.tello import Tello, TelloConnectionState
 from tello_aruco_nav.modules.tello_controller import TelloController, TelloState
 
 SAMPLES_COUNT = 100
-SAMPLE_DELAY = 1.0 / 15.0
+SAMPLE_DELAY = 0.1
 
 
 class Ui:
@@ -62,6 +63,12 @@ class Ui:
         self.__pid_z_target = np.zeros(SAMPLES_COUNT, np.float32)
         self.__pid_z_control = np.zeros(SAMPLES_COUNT, np.float32)
 
+        self.__rate_t = np.arange(-100.0, 100.0, 2.0, np.float32)
+        self.__rate_x = np.zeros(100, np.float32)
+        self.__rate_y = np.zeros(100, np.float32)
+        self.__rate_z = np.zeros(100, np.float32)
+        self.__update_rates()
+
     @property
     def is_running(self):
         return self.__is_running
@@ -101,7 +108,7 @@ class Ui:
             )
 
             self.__pid_x_control = shift(
-                self.__pid_x_control, -1, self.__controller.pid_x_state.control
+                self.__pid_x_control, -1, self.__controller.pid_x_state.control * 0.01
             )
 
             self.__pid_y_current = shift(
@@ -113,7 +120,7 @@ class Ui:
             )
 
             self.__pid_y_control = shift(
-                self.__pid_y_control, -1, self.__controller.pid_y_state.control
+                self.__pid_y_control, -1, self.__controller.pid_y_state.control * 0.01
             )
 
             self.__pid_z_current = shift(
@@ -125,10 +132,17 @@ class Ui:
             )
 
             self.__pid_z_control = shift(
-                self.__pid_z_control, -1, self.__controller.pid_z_state.control
+                self.__pid_z_control, -1, self.__controller.pid_z_state.control * 0.01
             )
 
             sleep(SAMPLE_DELAY)
+
+    def __update_rates(self):
+        rate_x, rate_y, rate_z = self.__controller.rate_expo
+        for i, t in enumerate(self.__rate_t):
+            self.__rate_x[i] = self.__controller.calc_rate_value(cast(float, t), rate_x)
+            self.__rate_y[i] = self.__controller.calc_rate_value(cast(float, t), rate_y)
+            self.__rate_z[i] = self.__controller.calc_rate_value(cast(float, t), rate_z)
 
     def __show_status_bar(self):
         imgui.begin_horizontal("status_bar")
@@ -152,6 +166,7 @@ class Ui:
         self.__show_pid_x()
         self.__show_pid_y()
         self.__show_pid_z()
+        self.__show_rates()
         self.__show_hud()
 
         self.__flight_controller.trigger_imgui_update()
@@ -188,7 +203,7 @@ class Ui:
             if implot.begin_plot("PID y", (-1.0, 400.0)):
                 implot.plot_line("current", self.__pid_y_current)
                 implot.plot_line("target", self.__pid_y_target)
-                implot.plot_line("control", self.__pid_y_control, xscale=0.01)
+                implot.plot_line("control", self.__pid_y_control)
 
                 implot.end_plot()
 
@@ -234,6 +249,25 @@ class Ui:
 
         imgui.end()
 
+    def __show_rates(self):
+        is_shown, _ = imgui.begin("Rates")
+        if is_shown:
+            if implot.begin_plot("Rates", (-1.0, 400.0)):
+                implot.plot_line("left/right", self.__rate_t, self.__rate_x)
+                implot.plot_line("up/down", self.__rate_t, self.__rate_y)
+                implot.plot_line("forward/backward", self.__rate_t, self.__rate_z)
+
+                implot.end_plot()
+
+            changed, value = imgui.drag_float3(
+                "Rates", list(self.__controller.rate_expo), 0.1
+            )
+            if changed:
+                self.__controller.rate_expo = value
+                self.__update_rates()
+
+        imgui.end()
+
     def __show_hud(self):
         from tello_aruco_nav.modules.flight_controller import FlightMode
 
@@ -256,14 +290,18 @@ class Ui:
             match self.__flight_controller.mode:
                 case FlightMode.MANUAL | FlightMode.FOLLOW:
                     if self.__controller.state in [TelloState.IDLE, TelloState.TAKEOFF]:
-                        imgui.button("Takeoff")
+                        if imgui.button("Takeoff"):
+                            self.__flight_controller.on_flight_button_clicked()
                     else:
-                        imgui.button("Land")
+                        if imgui.button("Land"):
+                            self.__flight_controller.on_flight_button_clicked()
                 case FlightMode.MISSION:
                     if not self.__mission_controller.is_started:
-                        imgui.button("Start mission")
+                        if imgui.button("Start mission"):
+                            self.__flight_controller.on_flight_button_clicked()
                     else:
-                        imgui.button("Stop mission")
+                        if imgui.button("Stop mission"):
+                            self.__flight_controller.on_flight_button_clicked()
             imgui.end_disabled()
 
             if imgui.begin_combo("Flight mode", str(self.__flight_controller.mode)):

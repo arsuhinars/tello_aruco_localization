@@ -58,27 +58,30 @@ class FlightController:
     def target_altitude(self, value: float):
         self.__controller.target_altitude = value
 
+    def on_flight_button_clicked(self):
+        match self.__mode:
+            case FlightMode.MANUAL | FlightMode.FOLLOW:
+                self.__controller.state = (
+                    TelloState.TAKEOFF
+                    if self.__controller.state
+                    in [
+                        TelloState.IDLE,
+                        TelloState.TAKEOFF,
+                    ]
+                    else TelloState.LANDING
+                )
+            case FlightMode.MISSION:
+                if self.__mission_controller.is_started:
+                    self.__mission_controller.stop()
+                else:
+                    self.__mission_controller.start()
+
     def trigger_imgui_update(self):
         if self.__tello.connection_state != TelloConnectionState.CONNECTED:
             return
 
         if imgui.is_key_pressed(imgui.Key.space, False):
-            match self.__mode:
-                case FlightMode.MANUAL | FlightMode.FOLLOW:
-                    self.__controller.state = (
-                        TelloState.TAKEOFF
-                        if self.__controller.state
-                        in [
-                            TelloState.IDLE,
-                            TelloState.TAKEOFF,
-                        ]
-                        else TelloState.LANDING
-                    )
-                case FlightMode.MISSION:
-                    if self.__mission_controller.is_started:
-                        self.__mission_controller.stop()
-                    else:
-                        self.__mission_controller.start()
+            self.on_flight_button_clicked()
 
         control = [0, 0, 0, 0]
         has_control = False

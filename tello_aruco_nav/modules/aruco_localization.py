@@ -36,7 +36,7 @@ class ArucoLocalization:
             return None, None, None
 
         self.__gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY, self.__gray_img)
-        self.__gray_img = cv2.GaussianBlur(self.__gray_img, (3, 3), 0, self.__gray_img)
+        # self.__gray_img = cv2.GaussianBlur(self.__gray_img, (3, 3), 0, self.__gray_img)
         # _, gray = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
 
         corners, ids, rejected_corners = self.__detector.detectMarkers(self.__gray_img)

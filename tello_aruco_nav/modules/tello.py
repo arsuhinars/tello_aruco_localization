@@ -28,6 +28,8 @@ TELLO_ADDRESS = (TELLO_IP, TELLO_COMMAND_PORT)
 TIMEOUT_DELAY = 5.0
 MAX_RETRIES_COUNT = 3
 TELLO_STATE_REGEX = re.compile(r"(\w+):(\d*(?:.\d{1,2})?)(?:;|$)")
+VIDEO_WIDTH = 640
+VIDEO_HEIGHT = 480
 
 
 class TelloConnectionState(IntEnum):
@@ -151,14 +153,16 @@ class Tello:
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
-        self.__is_flying = True
         await self.__send_command(b"takeoff")
+        await asyncio.sleep(3.0)
+        self.__is_flying = True
 
     async def land(self):
         if self.__connection_state != TelloConnectionState.CONNECTED:
             raise TelloDisconnectedException()
 
         await self.__send_command(b"land")
+        await asyncio.sleep(3.0)
         self.__is_flying = False
 
     def emergency(self):
@@ -266,7 +270,8 @@ class Tello:
             for frame in self.__av_container.decode(video=0):
                 if not self.__is_streaming:
                     break
-                img = frame.to_ndarray(format="rgb24")
+                frame = frame.reformat(VIDEO_WIDTH, VIDEO_HEIGHT, "rgb24")
+                img = frame.to_ndarray()
                 self.__last_frame = img
                 self.__last_frame_time = time()
         except av.error.ExitError:

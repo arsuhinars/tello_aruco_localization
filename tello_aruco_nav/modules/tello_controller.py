@@ -2,6 +2,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
+from math import copysign
 from typing import cast
 
 import numpy as np
@@ -13,7 +14,7 @@ from tello_aruco_nav.schemas.map import MarkerData
 
 logger = logging.getLogger("controller")
 
-UPDATE_DELAY = 0.02
+UPDATE_DELAY = 0.1
 
 # X forward, Y right, Z down
 
@@ -42,6 +43,7 @@ class TelloController:
         pid_x: Float3,
         pid_y: Float3,
         pid_z: Float3,
+        rate_expo: Float3,
     ):
         self.__tello = tello
         self.__markers_map = {m.id: m for m in markers}
@@ -59,10 +61,12 @@ class TelloController:
 
         self.__pid_x = PID(*pid_x, output_limits=(-60.0, 60.0))
         self.__pid_x_state = PidState()
-        self.__pid_y = PID(*pid_y, output_limits=(-60.0, 60.0))
+        self.__pid_y = PID(*pid_y, output_limits=(-60.0, 60.0), setpoint=1.0)
         self.__pid_y_state = PidState()
         self.__pid_z = PID(*pid_z, output_limits=(-60.0, 60.0))
         self.__pid_z_state = PidState()
+
+        self.__rate_expo = rate_expo
 
     @property
     def state(self):
@@ -163,6 +167,14 @@ class TelloController:
     def pid_z_state(self):
         return self.__pid_z_state
 
+    @property
+    def rate_expo(self):
+        return self.__rate_expo
+
+    @rate_expo.setter
+    def rate_expo(self, value: Float3):
+        self.__rate_expo = value
+
     async def run(self):
         while True:
             match self.__state:
@@ -204,11 +216,18 @@ class TelloController:
             await asyncio.sleep(UPDATE_DELAY)
 
     def __stabilize_position(self):
-        curr_alt = self.__tello.height
+        if self.__position is None:
+            curr_alt = self.__tello.height
+        else:
+            curr_alt = -self.__position[1]
         self.__marker_delta_alt = curr_alt - self.__target_altitude
 
         rc_up_down = self.__pid_y(curr_alt)
-        rc_up_down = 0 if rc_up_down is None else int(-rc_up_down)
+        rc_up_down = (
+            0
+            if rc_up_down is None
+            else int(self.calc_rate_value(-rc_up_down, self.__rate_expo[1]))
+        )
         self.__pid_y_state.current = curr_alt
         self.__pid_y_state.target = self.__target_altitude
         self.__pid_y_state.control = rc_up_down
@@ -239,11 +258,22 @@ class TelloController:
 
             vec @= self.__rotation
 
-            rc_left_right = int(vec[0])
-            rc_forward_backward = int(-vec[2])
+            rc_left_right = int(self.calc_rate_value(vec[0], self.__rate_expo[0]))
+            rc_forward_backward = int(
+                self.calc_rate_value(-vec[2], self.__rate_expo[2])
+            )
         else:
             rc_left_right = 0
             rc_forward_backward = 0
             self.__marker_dist = None
 
-        self.__tello.send_rc_control(rc_left_right, rc_forward_backward, rc_up_down, 0)
+        self.__tello.send_rc_control(
+            rc_left_right,
+            rc_forward_backward,
+            rc_up_down,
+            0,
+        )
+
+    @staticmethod
+    def calc_rate_value(x: float, expo: float):
+        return expo * 100.0 * ((x / 100.0) ** 2) * copysign(1.0, x) + x * (1.0 - expo)

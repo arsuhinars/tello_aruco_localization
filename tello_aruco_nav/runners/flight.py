@@ -61,6 +61,7 @@ class FlightRunner:
             calibration_data.pid_x,
             calibration_data.pid_y,
             calibration_data.pid_z,
+            calibration_data.rates,
         )
         self.__mission_controller = MissionController(mission_file, self.__controller)
         self.__hud = Hud()
@@ -157,10 +158,10 @@ class FlightRunner:
         last_frame_time = time()
         frame_delay = 1.0 / HUD_FRAMERATE
         while self.__is_running:
+            last_frame_time = time()
             if not self.__ui.is_running:
                 self.stop()
                 break
-
             self.__hud.push_image(self.__camera_img)
 
             if self.__aruco_pos is not None:
