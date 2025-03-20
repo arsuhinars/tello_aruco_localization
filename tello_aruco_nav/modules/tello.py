@@ -8,8 +8,9 @@ from threading import Thread
 from time import time
 
 import av
-import av.error
 import numpy as np
+from av.codec.hwaccel import HWAccel
+from av.video.reformatter import VideoReformatter
 
 from tello_aruco_nav.common.exceptions import (
     TelloAlreadyConnectedException,
@@ -67,7 +68,7 @@ class Tello:
 
     @property
     def height(self):
-        return self.__state_dict["h"] / 100.0
+        return self.__state_dict["tof"] / 100.0
 
     async def connect(self):
         if self.__connection_state != TelloConnectionState.DISCONNECTED:
@@ -93,6 +94,7 @@ class Tello:
         try:
             self.__cmd_sock.sendto(b"command", TELLO_ADDRESS)
         except Exception:
+            self.__on_disconnected()
             raise TelloFailedConnectException()
 
         async with self.__lock:
@@ -126,7 +128,10 @@ class Tello:
         await self.__send_command(b"streamon")
         self.__av_container = av.open(
             f"udp://0.0.0.0:{TELLO_STREAM_PORT}",
+            format="h264",
             timeout=TIMEOUT_DELAY,
+            buffer_size=4096,
+            hwaccel=HWAccel(device_type="vaapi", device="/dev/dri/renderD128"),
         )
         self.__is_streaming = True
         self.__av_thread = Thread(target=self.__run_stream_thread, daemon=True)
@@ -230,8 +235,6 @@ class Tello:
 
         del self.__cmd_sock
         del self.__state_sock
-        del self.__response_thread
-        del self.__status_thread
 
         if self.__is_streaming:
             self.__is_streaming = False
@@ -266,12 +269,14 @@ class Tello:
             logger.exception("State thread stopped")
 
     def __run_stream_thread(self):
+        reformatter = VideoReformatter()
+
         try:
             for frame in self.__av_container.decode(video=0):
                 if not self.__is_streaming:
                     break
-                frame = frame.reformat(VIDEO_WIDTH, VIDEO_HEIGHT, "rgb24")
-                img = frame.to_ndarray()
+                frame = reformatter.reformat(frame, VIDEO_WIDTH, VIDEO_HEIGHT, "rgb24")
+                img = frame.to_ndarray(format="rgb24")
                 self.__last_frame = img
                 self.__last_frame_time = time()
         except av.error.ExitError:
