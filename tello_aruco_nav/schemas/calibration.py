@@ -11,6 +11,7 @@ class CalibrationData(BaseModel):
     matrix: Annotated[list[Annotated[list[float], Len(3, 3)]], Len(3, 3)]
     dist_coeffs: Annotated[list[float], Len(5, 5)]
     rotation: Float3
+    offset: Float3
 
     pid_x: Float3
     pid_y: Float3

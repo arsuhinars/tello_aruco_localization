@@ -14,12 +14,14 @@ class ArucoLocalization:
         camera_matrix: np.ndarray,
         camera_dist_coeffs: np.ndarray,
         camera_angles: Float3,
+        camera_offset: Float3,
     ):
         self.__cam_mtx = camera_matrix
         self.__cam_dist = camera_dist_coeffs
         self.__cam_rotation_mtx = np.linalg.inv(rotation_matrix_euler(*camera_angles))[
             :3, :3
         ]
+        self.__cam_offset = np.array(camera_offset, np.float32)
 
         dictionary = aruco.getPredefinedDictionary(ARUCO_DICTIONARY)
         markers_ids = np.fromiter(map(lambda m: m.id, markers), np.int32)
@@ -36,7 +38,16 @@ class ArucoLocalization:
             return None, None, None
 
         self.__gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY, self.__gray_img)
-        # self.__gray_img = cv2.GaussianBlur(self.__gray_img, (3, 3), 0, self.__gray_img)
+        self.__gray_img = cv2.GaussianBlur(self.__gray_img, (3, 3), 0, self.__gray_img)
+        # self.__gray_img = cv2.adaptiveThreshold(
+        #     self.__gray_img,
+        #     255.0,
+        #     cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        #     cv2.THRESH_BINARY,
+        #     11,
+        #     2.0,
+        #     self.__gray_img,
+        # )
         # _, gray = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
 
         corners, ids, rejected_corners = self.__detector.detectMarkers(self.__gray_img)
@@ -76,7 +87,9 @@ class ArucoLocalization:
         rot, _ = cv2.Rodrigues(rvec)
         pos = -(rot.T @ tvec)
         rot = self.__cam_rotation_mtx @ rot
+        rot_t = rot.T
+        pos = pos.flatten() + self.__cam_offset @ rot_t
 
         cv2.drawFrameAxes(img, self.__cam_mtx, self.__cam_dist, rvec, tvec, 1.0)
 
-        return self.__gray_img, pos.flatten(), rot.T
+        return self.__gray_img, pos.flatten(), rot_t
