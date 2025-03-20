@@ -1,3 +1,4 @@
+import asyncio
 from threading import Thread
 from time import sleep
 from typing import cast
@@ -14,6 +15,18 @@ from tello_aruco_nav.modules.tello_controller import TelloController, TelloState
 
 SAMPLES_COUNT = 100
 SAMPLE_DELAY = 0.1
+POLLED_KEYS = [
+    imgui.Key.w,
+    imgui.Key.a,
+    imgui.Key.s,
+    imgui.Key.d,
+    imgui.Key.left_shift,
+    imgui.Key.left_ctrl,
+    imgui.Key.q,
+    imgui.Key.e,
+    imgui.Key.space,
+    imgui.Key.escape,
+]
 
 
 class Ui:
@@ -31,6 +44,9 @@ class Ui:
         self.__flight_controller = flight_controller
         self.__hud = hud
         self.__is_running = False
+        self.__pressed_keys: list[imgui.Key] = []
+        self.__down_keys: list[imgui.Key] = []
+        self.__keys_event = asyncio.Event()
 
         self.__params = hello_imgui.RunnerParams()
 
@@ -72,6 +88,10 @@ class Ui:
     @property
     def is_running(self):
         return self.__is_running
+
+    async def on_keys_update(self):
+        await self.__keys_event.wait()
+        return (self.__pressed_keys, self.__down_keys)
 
     def start(self):
         self.__gui_thread = Thread(target=self.__run_gui, daemon=True)
@@ -169,15 +189,30 @@ class Ui:
         self.__show_rates()
         self.__show_hud()
 
-        self.__flight_controller.trigger_imgui_update()
+        self.__pressed_keys.clear()
+        self.__down_keys.clear()
+        self.__keys_event.clear()
+        for k in POLLED_KEYS:
+            if imgui.is_key_pressed(k, False):
+                self.__pressed_keys.append(k)
+            if imgui.is_key_down(k):
+                self.__down_keys.append(k)
+        self.__keys_event.set()
 
     def __show_pid_x(self):
         is_shown, _ = imgui.begin("PID X")
         if is_shown:
+            implot.set_next_axis_limits(
+                implot.ImAxis_.x1.value,
+                0.0,
+                SAMPLES_COUNT - 1.0,
+                imgui.Cond_.always.value,
+            )
+            implot.set_next_axis_limits(implot.ImAxis_.y1.value, -5.0, 5.0)
             if implot.begin_plot("PID x", (-1.0, 400.0)):
                 implot.plot_line("current", self.__pid_x_current)
                 implot.plot_line("target", self.__pid_x_target)
-                implot.plot_line("control", self.__pid_x_control, xscale=0.01)
+                implot.plot_line("control", self.__pid_x_control)
 
                 implot.end_plot()
 
@@ -200,6 +235,13 @@ class Ui:
     def __show_pid_y(self):
         is_shown, _ = imgui.begin("PID Y (altitude)")
         if is_shown:
+            implot.set_next_axis_limits(
+                implot.ImAxis_.x1.value,
+                0.0,
+                SAMPLES_COUNT - 1.0,
+                imgui.Cond_.always.value,
+            )
+            implot.set_next_axis_limits(implot.ImAxis_.y1.value, -1.0, 1.0)
             if implot.begin_plot("PID y", (-1.0, 400.0)):
                 implot.plot_line("current", self.__pid_y_current)
                 implot.plot_line("target", self.__pid_y_target)
@@ -226,10 +268,17 @@ class Ui:
     def __show_pid_z(self):
         is_shown, _ = imgui.begin("PID Z")
         if is_shown:
+            implot.set_next_axis_limits(
+                implot.ImAxis_.x1.value,
+                0.0,
+                SAMPLES_COUNT - 1.0,
+                imgui.Cond_.always.value,
+            )
+            implot.set_next_axis_limits(implot.ImAxis_.y1.value, -5.0, 5.0)
             if implot.begin_plot("PID z", (-1.0, 400.0)):
                 implot.plot_line("current", self.__pid_z_current)
                 implot.plot_line("target", self.__pid_z_target)
-                implot.plot_line("control", self.__pid_z_control, xscale=0.01)
+                implot.plot_line("control", self.__pid_z_control)
 
                 implot.end_plot()
 
