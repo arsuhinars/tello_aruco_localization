@@ -14,7 +14,7 @@ from tello_aruco_nav.modules.tello import Tello
 logger = logging.getLogger("controller")
 
 UPDATE_DELAY = 0.05
-FLY_BY_OFFSET_SPEED = 50
+FLY_BY_OFFSET_SPEED = 80
 
 # X forward, Y right, Z down
 
@@ -60,11 +60,11 @@ class TelloController:
         self.__land_event.set()
         self.__flew_by_event = asyncio.Event()
 
-        self.__pid_x = PID(*pid_x, output_limits=(-60.0, 60.0))
+        self.__pid_x = PID(*pid_x, output_limits=(-40.0, 40.0))
         self.__pid_x_state = PidState()
         self.__pid_y = PID(*pid_y, output_limits=(-60.0, 60.0), setpoint=1.0)
         self.__pid_y_state = PidState()
-        self.__pid_z = PID(*pid_z, output_limits=(-60.0, 60.0))
+        self.__pid_z = PID(*pid_z, output_limits=(-40.0, 40.0))
         self.__pid_z_state = PidState()
 
         self.__rate_expo = rate_expo
@@ -202,9 +202,11 @@ class TelloController:
                 case TelloState.FLY_BY_OFFSET:
                     if self.__fly_by_offset is not None:
                         x, y, z = self.__fly_by_offset
+                        logger.info(f"Fly by {x} {y} {z}")
                         await self.__tello.go(
                             int(x), int(y), int(z), FLY_BY_OFFSET_SPEED
                         )
+                        logger.info("Done")
                     self.__flew_by_event.set()
                     await asyncio.sleep(0.0)
                     self.__flew_by_event.clear()

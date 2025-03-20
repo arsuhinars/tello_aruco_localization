@@ -159,7 +159,7 @@ class Tello:
             raise TelloDisconnectedException()
 
         await self.__send_command(b"takeoff")
-        await asyncio.sleep(3.0)
+        await asyncio.sleep(5.0)
         self.__is_flying = True
 
     async def land(self):
