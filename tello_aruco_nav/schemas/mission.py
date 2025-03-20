@@ -16,5 +16,12 @@ class MissionLocationWaypoint(BaseModel):
     delay_after: float = 0.0
 
 
+class MissionFlyOffsetWaypoint(BaseModel):
+    offset: Float3
+    delay_after: float = 0.0
+
+
 class MissionData(BaseModel):
-    waypoints: list[MissionLocationWaypoint | MissionMarkerWaypoint]
+    waypoints: list[
+        MissionLocationWaypoint | MissionMarkerWaypoint | MissionFlyOffsetWaypoint
+    ]

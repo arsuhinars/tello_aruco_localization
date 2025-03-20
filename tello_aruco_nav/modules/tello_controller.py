@@ -13,7 +13,8 @@ from tello_aruco_nav.modules.tello import Tello
 
 logger = logging.getLogger("controller")
 
-UPDATE_DELAY = 0.1
+UPDATE_DELAY = 0.05
+FLY_BY_OFFSET_SPEED = 50
 
 # X forward, Y right, Z down
 
@@ -23,8 +24,9 @@ class TelloState(IntEnum):
     TAKEOFF = 1
     GO_TO_POS = 2
     MANUAL_CONTROL = 3
-    WAITING = 4
-    LANDING = 5
+    FLY_BY_OFFSET = 4
+    WAITING = 5
+    LANDING = 6
 
 
 @dataclass
@@ -48,12 +50,15 @@ class TelloController:
         self.__rotation: np.ndarray | None = None
         self.__target_pos: np.ndarray | None = None
         self.__manual_controls: tuple[int, int, int, int] | None = None
+        self.__last_stabilize_controls: tuple[int, int] | None = None
+        self.__fly_by_offset: Float3 | None = None
         self.__marker_dist: float | None = None
         self.__marker_delta_alt = 0.0
         self.__state = TelloState.IDLE
         self.__takeoff_event = asyncio.Event()
         self.__land_event = asyncio.Event()
         self.__land_event.set()
+        self.__flew_by_event = asyncio.Event()
 
         self.__pid_x = PID(*pid_x, output_limits=(-60.0, 60.0))
         self.__pid_x_state = PidState()
@@ -86,6 +91,9 @@ class TelloController:
     async def on_landed(self):
         await self.__land_event.wait()
 
+    async def on_flown(self):
+        await self.__flew_by_event.wait()
+
     @property
     def marker_dist(self):
         return self.__marker_dist
@@ -113,6 +121,14 @@ class TelloController:
             self.__pid_x.setpoint = value[0]
             self.__pid_y.setpoint = value[1]
             self.__pid_z.setpoint = value[2]
+
+    @property
+    def fly_by_offset(self):
+        return self.__fly_by_offset
+
+    @fly_by_offset.setter
+    def fly_by_offset(self, value: Float3 | None):
+        self.__fly_by_offset = value
 
     def feed_location(self, position: np.ndarray | None, rotation: np.ndarray | None):
         self.__position = position
@@ -183,6 +199,16 @@ class TelloController:
                     self.__takeoff_event.clear()
                     logger.info("Landed")
                     self.__state = TelloState.IDLE
+                case TelloState.FLY_BY_OFFSET:
+                    if self.__fly_by_offset is not None:
+                        x, y, z = self.__fly_by_offset
+                        await self.__tello.go(
+                            int(x), int(y), int(z), FLY_BY_OFFSET_SPEED
+                        )
+                    self.__flew_by_event.set()
+                    await asyncio.sleep(0.0)
+                    self.__flew_by_event.clear()
+                    self.__state = TelloState.WAITING
                 case _:
                     if self.__manual_controls is not None:
                         self.__state = TelloState.MANUAL_CONTROL
@@ -205,10 +231,10 @@ class TelloController:
     def __stabilize_position(self):
         assert self.__target_pos is not None
 
-        if self.__position is None:
-            curr_alt = self.__tello.height
-        else:
-            curr_alt = -self.__position[1]
+        # if self.__position is None:
+        curr_alt = self.__tello.height
+        # else:
+        # curr_alt = -self.__position[1]
         self.__marker_delta_alt = curr_alt - self.__target_pos[1]
 
         rc_up_down = self.__pid_y(curr_alt)
@@ -248,10 +274,15 @@ class TelloController:
             rc_forward_backward = int(
                 self.calc_rate_value(-vec[2], self.__rate_expo[2])
             )
+
+            self.__last_stabilize_controls = (rc_left_right, rc_forward_backward)
+        elif self.__last_stabilize_controls is not None:
+            rc_left_right = -self.__last_stabilize_controls[0]
+            rc_forward_backward = -self.__last_stabilize_controls[1]
         else:
             rc_left_right = 0
             rc_forward_backward = 0
-            # self.__marker_dist = None
+            self.__marker_dist = None
 
         self.__tello.send_rc_control(
             rc_left_right,

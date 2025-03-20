@@ -1,6 +1,10 @@
 {
   "waypoints": [
     {
+      "offset": [-50, 50, 50],
+      "delay_after": 1.0
+    },
+    {
       "marker_id": 6,
       "altitude": 2.0,
       "radius": 0.2,
@@ -10,61 +14,61 @@
       "marker_id": 3,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 2.0
+      "delay_after": 3.0
     },
     {
       "marker_id": 4,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 2.0
+      "delay_after": 3.0
     },
     {
       "marker_id": 5,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 7.0
+      "delay_after": 8.0
     },
     {
       "marker_id": 2,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 2.0
+      "delay_after": 3.0
     },
     {
       "marker_id": 1,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 2.0
+      "delay_after": 3.0
     },
     {
       "marker_id": 4,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 2.0
+      "delay_after": 3.0
     },
     {
       "marker_id": 7,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 7.0
+      "delay_after": 8.0
     },
     {
       "marker_id": 8,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 2.0
+      "delay_after": 3.0
     },
     {
       "marker_id": 7,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 2.0
+      "delay_after": 3.0
     },
     {
       "marker_id": 6,
       "altitude": 2.0,
       "radius": 0.2,
-      "delay_after": 2.0
+      "delay_after": 3.0
     },
     {
       "marker_id": 6,

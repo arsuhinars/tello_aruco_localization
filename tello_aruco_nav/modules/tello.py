@@ -187,6 +187,13 @@ class Tello:
             f"rc {left_right} {forward_backward} {up_down} {yaw}".encode("ascii")
         )
 
+    async def go(self, x: int, y: int, z: int, speed: int):
+        if self.__connection_state != TelloConnectionState.CONNECTED:
+            raise TelloDisconnectedException()
+
+        await self.__send_command(f"go {x} {y} {z} {speed}".encode("ascii"))
+        await asyncio.sleep(3.0)
+
     def get_video_frame(self):
         if self.__connection_state != TelloConnectionState.CONNECTED:
             return None

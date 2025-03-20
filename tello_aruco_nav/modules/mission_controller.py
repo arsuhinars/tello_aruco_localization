@@ -7,6 +7,7 @@ from tello_aruco_nav.modules.tello_controller import TelloController, TelloState
 from tello_aruco_nav.schemas.map import MarkerData
 from tello_aruco_nav.schemas.mission import (
     MissionData,
+    MissionFlyOffsetWaypoint,
     MissionLocationWaypoint,
     MissionMarkerWaypoint,
 )
@@ -75,12 +76,18 @@ class MissionController:
                     self.__controller.target_pos = np.array([x, wp.altitude, z])
                 case MissionLocationWaypoint():
                     self.__controller.target_pos = np.array(wp.position)
+                case MissionFlyOffsetWaypoint():
+                    self.__controller.state = TelloState.FLY_BY_OFFSET
+                    self.__controller.fly_by_offset = wp.offset
+                    await self.__controller.on_flown()
 
-            while (
-                self.__controller.marker_dist is None
-                or self.__controller.marker_dist >= wp.radius
-            ):
-                await asyncio.sleep(UPDATE_DELAY)
+            match wp:
+                case MissionMarkerWaypoint() | MissionLocationWaypoint():
+                    while (
+                        self.__controller.marker_dist is None
+                        or self.__controller.marker_dist >= wp.radius
+                    ):
+                        await asyncio.sleep(UPDATE_DELAY)
             await asyncio.sleep(wp.delay_after)
 
         self.__curr_wp_idx = None

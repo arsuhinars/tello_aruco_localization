@@ -191,13 +191,14 @@ class Ui:
 
         self.__pressed_keys.clear()
         self.__down_keys.clear()
-        self.__keys_event.clear()
         for k in POLLED_KEYS:
             if imgui.is_key_pressed(k, False):
                 self.__pressed_keys.append(k)
             if imgui.is_key_down(k):
                 self.__down_keys.append(k)
         self.__keys_event.set()
+        sleep(0.0)
+        self.__keys_event.clear()
 
     def __show_pid_x(self):
         is_shown, _ = imgui.begin("PID X")
