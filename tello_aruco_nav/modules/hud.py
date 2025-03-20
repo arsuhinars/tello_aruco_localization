@@ -104,7 +104,7 @@ class Hud:
             total_height = 0.0
             for s in texts:
                 (_, text_height), _ = cv2.getTextSize(
-                    s, cv2.FONT_HERSHEY_PLAIN, 1.25, 1
+                    s, cv2.FONT_HERSHEY_PLAIN, 0.75, 1
                 )
                 total_height += text_height + TEXT_SPACING
             total_height -= TEXT_SPACING
@@ -114,7 +114,7 @@ class Hud:
             offset_y = 0
             for s in texts:
                 (text_width, text_height), _ = cv2.getTextSize(
-                    s, cv2.FONT_HERSHEY_PLAIN, 1.25, 1
+                    s, cv2.FONT_HERSHEY_PLAIN, 0.75, 1
                 )
                 cv2.putText(
                     self.__buffer_image,
@@ -133,7 +133,7 @@ class Hud:
                         + text_height,
                     ),
                     cv2.FONT_HERSHEY_PLAIN,
-                    1.25,
+                    0.75,
                     WHITE_COLOR,
                     1,
                 )
