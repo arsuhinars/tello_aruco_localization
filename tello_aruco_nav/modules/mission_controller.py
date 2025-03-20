@@ -1,14 +1,27 @@
 import asyncio
 
+import numpy as np
+
 from tello_aruco_nav.common.utils import load_json
 from tello_aruco_nav.modules.tello_controller import TelloController, TelloState
-from tello_aruco_nav.schemas.mission import MissionData
+from tello_aruco_nav.schemas.map import MarkerData
+from tello_aruco_nav.schemas.mission import (
+    MissionData,
+    MissionLocationWaypoint,
+    MissionMarkerWaypoint,
+)
 
-UPDATE_DELAY = 0.2
+UPDATE_DELAY = 0.05
 
 
 class MissionController:
-    def __init__(self, mission_file: str | None, controller: TelloController):
+    def __init__(
+        self,
+        mission_file: str | None,
+        markers: list[MarkerData],
+        controller: TelloController,
+    ):
+        self.__markers_map = {m.id: m for m in markers}
         self.__waypoints = (
             load_json(MissionData, mission_file).waypoints
             if mission_file is not None
@@ -46,6 +59,7 @@ class MissionController:
         if self.__is_started:
             self.__task.cancel()
             self.__is_started = False
+            self.__curr_wp_idx = None
 
     async def __run(self):
         self.__is_started = True
@@ -55,10 +69,17 @@ class MissionController:
 
         for i, wp in enumerate(self.__waypoints):
             self.__curr_wp_idx = i
-            self.__controller.target_marker_id = wp.marker_id
-            self.__controller.target_altitude = wp.altitude
-            dist = self.__controller.marker_dist
-            while dist is None or dist >= wp.radius:
+            match wp:
+                case MissionMarkerWaypoint():
+                    x, _, z = self.__markers_map[wp.marker_id].center
+                    self.__controller.target_pos = np.array([x, wp.altitude, z])
+                case MissionLocationWaypoint():
+                    self.__controller.target_pos = np.array(wp.position)
+
+            while (
+                self.__controller.marker_dist is None
+                or self.__controller.marker_dist >= wp.radius
+            ):
                 await asyncio.sleep(UPDATE_DELAY)
             await asyncio.sleep(wp.delay_after)
 
