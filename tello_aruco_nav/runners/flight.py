@@ -30,7 +30,7 @@ from tello_aruco_nav.schemas.map import MapData
 logger = logging.getLogger("flight")
 
 
-UPDATE_TIME = 0.03
+UPDATE_TIME = 0.05
 RECONNECT_TIME = 5.0
 
 
@@ -54,19 +54,21 @@ class FlightRunner:
             calibration_data.get_np_matrix(),
             calibration_data.get_np_dist_coeffs(),
             calibration_data.rotation,
+            calibration_data.offset,
         )
         self.__controller = TelloController(
             self.__tello,
-            map_data.markers,
             calibration_data.pid_x,
             calibration_data.pid_y,
             calibration_data.pid_z,
             calibration_data.rates,
         )
-        self.__mission_controller = MissionController(mission_file, self.__controller)
+        self.__mission_controller = MissionController(
+            mission_file, map_data.markers, self.__controller
+        )
         self.__hud = Hud()
         self.__flight_controller = FlightController(
-            self.__tello, self.__mission_controller, self.__controller
+            map_data.markers, self.__tello, self.__mission_controller, self.__controller
         )
         self.__ui = Ui(
             self.__tello,
@@ -117,6 +119,7 @@ class FlightRunner:
 
     async def __main_loop(self):
         asyncio.create_task(self.__hud_loop())
+        asyncio.create_task(self.__flight_controller.run(self.__ui))
         self.__ui.start()
 
         while self.__is_running:
@@ -132,6 +135,8 @@ class FlightRunner:
                 finally:
                     self.__camera_img = None
                     self.__camera_gray_img = None
+                    self.__controller.state = TelloState.IDLE
+                    self.__mission_controller.reset()
                     controller_task.cancel()
             except (
                 TelloFailedConnectException,
@@ -196,19 +201,19 @@ class FlightRunner:
                     self.__hud.push_text(
                         "taking off", AlignHorizontal.CENTER, AlignVertical.TOP
                     )
-                case TelloState.GO_TO_MARKER:
-                    marker_id = self.__controller.target_marker_id
-                    marker_dist = self.__controller.marker_dist
-                    marker_alt_delta = self.__controller.marker_alt_delta
-                    if marker_id is not None:
+                case TelloState.GO_TO_POS:
+                    target_pos = self.__controller.target_pos
+                    dist = self.__controller.marker_dist
+                    alt_delta = self.__controller.marker_alt_delta
+                    if target_pos is not None:
                         self.__hud.push_text(
-                            f"flying to marker with id={marker_id}",
+                            f"flying to x={target_pos[0]:.2f} y={target_pos[1]:.2f} z={target_pos[2]:.2f}",
                             AlignHorizontal.CENTER,
                             AlignVertical.TOP,
                         )
-                    if marker_dist is not None:
+                    if dist is not None:
                         self.__hud.push_text(
-                            f"dist={marker_dist:.2f} m., delta_alt={marker_alt_delta:.2f} m.",
+                            f"dist={dist:.2f} m., delta_alt={alt_delta:.2f} m.",
                             AlignHorizontal.CENTER,
                             AlignVertical.TOP,
                         )
