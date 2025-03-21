@@ -3,8 +3,15 @@ import numpy as np
 from cv2 import aruco
 from cv2.typing import MatLike
 
-from tello_aruco_nav.common.utils import ARUCO_DICTIONARY, Float3, rotation_matrix_euler
+from tello_aruco_nav.common.utils import (
+    ARUCO_DICTIONARY,
+    Float3,
+    rotation_matrix_euler,
+    shift,
+)
 from tello_aruco_nav.schemas.map import MarkerData
+
+SAMPLES_COUNT = 12
 
 
 class ArucoLocalization:
@@ -32,6 +39,7 @@ class ArucoLocalization:
         self.__detector = aruco.ArucoDetector(dictionary, parameters)
 
         self.__gray_img: np.ndarray | None = None
+        self.__last_positions: np.ndarray | None = None
 
     def update(self, img: MatLike | None):
         if img is None:
@@ -92,4 +100,11 @@ class ArucoLocalization:
 
         cv2.drawFrameAxes(img, self.__cam_mtx, self.__cam_dist, rvec, tvec, 1.0)
 
-        return self.__gray_img, pos.flatten(), rot_t
+        self.__last_positions = (
+            shift(self.__last_positions, -1, pos)
+            if self.__last_positions is not None
+            else np.repeat(pos[None, :], SAMPLES_COUNT, axis=0)
+        )
+        pos = np.mean(self.__last_positions, 0)
+
+        return self.__gray_img, pos, rot_t
