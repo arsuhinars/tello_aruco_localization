@@ -270,12 +270,10 @@ class TelloController:
             self.__pid_z_state.target = target_pos[1]
             self.__pid_z_state.control = vec[2]
 
-            vec @= self.__rotation
+            # vec @= self.__rotation
 
             rc_left_right = int(self.calc_rate_value(vec[0], self.__rate_expo[0]))
-            rc_forward_backward = int(
-                self.calc_rate_value(-vec[2], self.__rate_expo[2])
-            )
+            rc_forward_backward = int(self.calc_rate_value(vec[2], self.__rate_expo[2]))
 
             self.__last_stabilize_controls = (rc_left_right, rc_forward_backward)
         # elif self.__last_stabilize_controls is not None:

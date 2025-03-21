@@ -63,7 +63,7 @@ class FlightController:
 
         if value is None:
             self.__controller.target_pos = None
-        else:
+        elif value in self.__markers_map:
             x, _, z = self.__markers_map[value].center
             self.__controller.target_pos = np.array([x, self.__target_altitude, z])
 
@@ -74,7 +74,10 @@ class FlightController:
     @target_altitude.setter
     def target_altitude(self, value: float):
         self.__target_altitude = value
-        if self.__target_marker_id is not None:
+        if (
+            self.__target_marker_id is not None
+            and self.__target_marker_id in self.__markers_map
+        ):
             x, _, z = self.__markers_map[self.__target_marker_id].center
             self.__controller.target_pos = np.array([x, self.__target_altitude, z])
 
