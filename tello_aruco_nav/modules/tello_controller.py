@@ -13,7 +13,7 @@ from tello_aruco_nav.modules.tello import Tello
 
 logger = logging.getLogger("controller")
 
-UPDATE_DELAY = 0.05
+UPDATE_DELAY = 0.1
 FLY_BY_OFFSET_SPEED = 80
 
 # X forward, Y right, Z down
@@ -278,9 +278,9 @@ class TelloController:
             )
 
             self.__last_stabilize_controls = (rc_left_right, rc_forward_backward)
-        elif self.__last_stabilize_controls is not None:
-            rc_left_right = -self.__last_stabilize_controls[0]
-            rc_forward_backward = -self.__last_stabilize_controls[1]
+        # elif self.__last_stabilize_controls is not None:
+        # rc_left_right = -self.__last_stabilize_controls[0]
+        # rc_forward_backward = -self.__last_stabilize_controls[1]
         else:
             rc_left_right = 0
             rc_forward_backward = 0
