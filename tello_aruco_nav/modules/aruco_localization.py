@@ -96,7 +96,7 @@ class ArucoLocalization:
         pos = -(rot.T @ tvec)
         rot = self.__cam_rotation_mtx @ rot
         rot_t = rot.T
-        pos = pos.flatten() + np.array([-0.5, 0.0, -0.5])
+        pos = pos.flatten() + np.array([0.0, 0.0, -0.8])
         # pos = pos.flatten() + self.__cam_offset @ rot_t
 
         cv2.drawFrameAxes(img, self.__cam_mtx, self.__cam_dist, rvec, tvec, 1.0)

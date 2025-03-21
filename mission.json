@@ -2,60 +2,60 @@
   "waypoints": [
     {
       "control": [-40, 20, 40],
-      "duration": 0.8,
+      "duration": 1.5,
       "delay_after": 2.0
     },
     {
       "marker_id": 143,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 2.0
     },
     {
       "marker_id": 147,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 2.0
     },
     {
       "marker_id": 126,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 4.0
     },
     {
       "marker_id": 148,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 2.0
     },
     {
       "marker_id": 145,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 4.0
     },
     {
       "marker_id": 144,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 6.0
     },
     {
       "marker_id": 147,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 4.0
     },
     {
       "marker_id": 146,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 6.0
     },
     {
       "marker_id": 102,
-      "altitude": 3.0,
+      "altitude": 2.0,
       "radius": 0.2,
       "delay_after": 2.0
     },
