@@ -21,7 +21,16 @@ class MissionFlyOffsetWaypoint(BaseModel):
     delay_after: float = 0.0
 
 
+class MissionRcControlWaypoint(BaseModel):
+    control: tuple[int, int, int]
+    duration: float
+    delay_after: float = 0.0
+
+
 class MissionData(BaseModel):
     waypoints: list[
-        MissionLocationWaypoint | MissionMarkerWaypoint | MissionFlyOffsetWaypoint
+        MissionLocationWaypoint
+        | MissionMarkerWaypoint
+        | MissionFlyOffsetWaypoint
+        | MissionRcControlWaypoint
     ]

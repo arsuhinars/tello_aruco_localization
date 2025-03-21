@@ -136,7 +136,7 @@ class FlightController:
             match self.__mode:
                 case FlightMode.MANUAL:
                     self.__controller.manual_control = tuple(control)
-                case FlightMode.FOLLOW | FlightMode.MISSION:
+                case FlightMode.FOLLOW:
                     self.__controller.manual_control = (
                         tuple(control) if has_control else None
                     )

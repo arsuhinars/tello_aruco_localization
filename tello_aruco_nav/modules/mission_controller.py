@@ -10,6 +10,7 @@ from tello_aruco_nav.schemas.mission import (
     MissionFlyOffsetWaypoint,
     MissionLocationWaypoint,
     MissionMarkerWaypoint,
+    MissionRcControlWaypoint,
 )
 
 UPDATE_DELAY = 0.05
@@ -66,6 +67,8 @@ class MissionController:
         self.__is_started = True
         self.__curr_wp_idx = None
         self.__controller.state = TelloState.TAKEOFF
+        self.__controller.manual_control = None
+        self.__controller.target_pos = None
         await self.__controller.on_take_off()
 
         for i, wp in enumerate(self.__waypoints):
@@ -73,13 +76,20 @@ class MissionController:
             match wp:
                 case MissionMarkerWaypoint():
                     x, _, z = self.__markers_map[wp.marker_id].center
+                    self.__controller.manual_control = None
                     self.__controller.target_pos = np.array([x, wp.altitude, z])
                 case MissionLocationWaypoint():
+                    self.__controller.manual_control = None
                     self.__controller.target_pos = np.array(wp.position)
                 case MissionFlyOffsetWaypoint():
                     self.__controller.state = TelloState.FLY_BY_OFFSET
+                    self.__controller.manual_control = None
+                    self.__controller.target_pos = None
                     self.__controller.fly_by_offset = wp.offset
                     await self.__controller.on_flown()
+                case MissionRcControlWaypoint():
+                    self.__controller.manual_control = (*wp.control, 0)
+                    await asyncio.sleep(wp.duration)
 
             match wp:
                 case MissionMarkerWaypoint() | MissionLocationWaypoint():
